@@ -1,0 +1,378 @@
+{
+  "product": {
+    "economicTerms": {
+      "effectiveDate": {
+        "adjustableDate": {
+          "unadjustedDate": "2026-08-20",
+          "dateAdjustments": {
+            "businessDayConvention": "MODFOLLOWING",
+            "businessCenters": {
+              "businessCenter": [
+                {
+                  "@data": "JPTO"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "terminationDate": {
+        "adjustableDate": {
+          "unadjustedDate": "2031-08-20",
+          "dateAdjustments": {
+            "businessDayConvention": "MODFOLLOWING",
+            "businessCenters": {
+              "businessCenter": [
+                {
+                  "@data": "JPTO"
+                }
+              ]
+            }
+          }
+        }
+      },
+      "payout": [
+        {
+          "InterestRatePayout": {
+            "payerReceiver": {
+              "payer": "Party1",
+              "receiver": "Party2"
+            },
+            "priceQuantity": {
+              "quantitySchedule": {
+                "value": "1000000000",
+                "unit": {
+                  "currency": {
+                    "@data": "JPY"
+                  }
+                }
+              }
+            },
+            "rateSpecification": {
+              "FixedRateSpecification": {
+                "rateSchedule": {
+                  "price": {
+                    "value": "0.0075",
+                    "priceType": "InterestRate",
+                    "priceExpression": "PercentageOfNotional"
+                  }
+                }
+              }
+            },
+            "dayCountFraction": {
+              "@data": "ACT/365.FIXED"
+            },
+            "calculationPeriodDates": {
+              "effectiveDate": {
+                "adjustableDate": {
+                  "unadjustedDate": "2026-08-20",
+                  "dateAdjustments": {
+                    "businessDayConvention": "MODFOLLOWING",
+                    "businessCenters": {
+                      "businessCenter": [
+                        {
+                          "@data": "JPTO"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "terminationDate": {
+                "adjustableDate": {
+                  "unadjustedDate": "2031-08-20",
+                  "dateAdjustments": {
+                    "businessDayConvention": "MODFOLLOWING",
+                    "businessCenters": {
+                      "businessCenter": [
+                        {
+                          "@data": "JPTO"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "calculationPeriodDatesAdjustments": {
+                "businessDayConvention": "MODFOLLOWING",
+                "businessCenters": {
+                  "businessCenter": [
+                    {
+                      "@data": "JPTO"
+                    }
+                  ]
+                }
+              },
+              "calculationPeriodFrequency": {
+                "periodMultiplier": 12,
+                "period": "M",
+                "rollConvention": "20"
+              }
+            },
+            "paymentDates": {
+              "paymentFrequency": {
+                "periodMultiplier": 12,
+                "period": "M"
+              },
+              "payRelativeTo": "CalculationPeriodEndDate",
+              "paymentDatesAdjustments": {
+                "businessDayConvention": "MODFOLLOWING",
+                "businessCenters": {
+                  "businessCenter": [
+                    {
+                      "@data": "JPTO"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "InterestRatePayout": {
+            "payerReceiver": {
+              "payer": "Party2",
+              "receiver": "Party1"
+            },
+            "priceQuantity": {
+              "quantitySchedule": {
+                "value": "1000000000",
+                "unit": {
+                  "currency": {
+                    "@data": "JPY"
+                  }
+                }
+              }
+            },
+            "rateSpecification": {
+              "FloatingRateSpecification": {
+                "rateOption": {
+                  "FloatingRateIndex": {
+                    "identifier": [
+                      {
+                        "identifier": {
+                          "@data": "JPY-TONA-OIS-COMPOUND"
+                        },
+                        "identifierType": "Name"
+                      }
+                    ],
+                    "assetType": "Other",
+                    "floatingRateIndex": {
+                      "@data": "JPY-TONA-OIS-COMPOUND"
+                    }
+                  }
+                }
+              }
+            },
+            "dayCountFraction": {
+              "@data": "ACT/365.FIXED"
+            },
+            "calculationPeriodDates": {
+              "effectiveDate": {
+                "adjustableDate": {
+                  "unadjustedDate": "2026-08-20",
+                  "dateAdjustments": {
+                    "businessDayConvention": "MODFOLLOWING",
+                    "businessCenters": {
+                      "businessCenter": [
+                        {
+                          "@data": "JPTO"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "terminationDate": {
+                "adjustableDate": {
+                  "unadjustedDate": "2031-08-20",
+                  "dateAdjustments": {
+                    "businessDayConvention": "MODFOLLOWING",
+                    "businessCenters": {
+                      "businessCenter": [
+                        {
+                          "@data": "JPTO"
+                        }
+                      ]
+                    }
+                  }
+                }
+              },
+              "calculationPeriodDatesAdjustments": {
+                "businessDayConvention": "MODFOLLOWING",
+                "businessCenters": {
+                  "businessCenter": [
+                    {
+                      "@data": "JPTO"
+                    }
+                  ]
+                }
+              },
+              "calculationPeriodFrequency": {
+                "periodMultiplier": 12,
+                "period": "M",
+                "rollConvention": "20"
+              }
+            },
+            "paymentDates": {
+              "paymentFrequency": {
+                "periodMultiplier": 12,
+                "period": "M"
+              },
+              "payRelativeTo": "CalculationPeriodEndDate",
+              "paymentDatesAdjustments": {
+                "businessDayConvention": "MODFOLLOWING",
+                "businessCenters": {
+                  "businessCenter": [
+                    {
+                      "@data": "JPTO"
+                    }
+                  ]
+                }
+              }
+            },
+            "resetDates": {
+              "resetRelativeTo": "CalculationPeriodEndDate",
+              "resetFrequency": {
+                "periodMultiplier": 12,
+                "period": "M"
+              },
+              "resetDatesAdjustments": {
+                "businessDayConvention": "MODFOLLOWING",
+                "businessCenters": {
+                  "businessCenter": [
+                    {
+                      "@data": "JPTO"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "tradeLot": [
+    {
+      "priceQuantity": [
+        {
+          "quantity": {
+            "value": "1000000000",
+            "unit": {
+              "currency": {
+                "@data": "JPY"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "counterparty": [
+    {
+      "role": "Party1",
+      "partyReference": {
+        "partyId": [
+          {
+            "identifier": {
+              "@data": "5493006MHB84DD0ZWV18"
+            }
+          }
+        ],
+        "name": {
+          "@data": "Bank A Tokyo"
+        }
+      }
+    },
+    {
+      "role": "Party2",
+      "partyReference": {
+        "partyId": [
+          {
+            "identifier": {
+              "@data": "485400F9AM14CT701959"
+            }
+          }
+        ],
+        "name": {
+          "@data": "Bank B Tokyo"
+        }
+      }
+    }
+  ],
+  "tradeIdentifier": [
+    {
+      "assignedIdentifier": [
+        {
+          "identifier": {
+            "@data": "IRS-JPY-TONA-20260820-001"
+          },
+          "version": 1
+        }
+      ],
+      "identifierType": "UniqueTransactionIdentifier"
+    }
+  ],
+  "tradeDate": {
+    "@data": "2026-08-16"
+  },
+  "party": [
+    {
+      "partyId": [
+        {
+          "identifier": {
+            "@data": "5493006MHB84DD0ZWV18"
+          }
+        }
+      ],
+      "name": {
+        "@data": "Bank A Tokyo"
+      }
+    },
+    {
+      "partyId": [
+        {
+          "identifier": {
+            "@data": "485400F9AM14CT701959"
+          }
+        }
+      ],
+      "name": {
+        "@data": "Bank B Tokyo"
+      }
+    }
+  ],
+  "partyRole": [
+    {
+      "partyReference": {
+        "partyId": [
+          {
+            "identifier": {
+              "@data": "5493006MHB84DD0ZWV18"
+            }
+          }
+        ],
+        "name": {
+          "@data": "Bank A Tokyo"
+        }
+      },
+      "role": "Buyer"
+    },
+    {
+      "partyReference": {
+        "partyId": [
+          {
+            "identifier": {
+              "@data": "485400F9AM14CT701959"
+            }
+          }
+        ],
+        "name": {
+          "@data": "Bank B Tokyo"
+        }
+      },
+      "role": "Seller"
+    }
+  ]
+}
