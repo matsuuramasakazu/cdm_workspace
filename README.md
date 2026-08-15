@@ -1,0 +1,2 @@
+# cdm_workspace
+finos-cdmを使ったpythonコーディング用のワークスペース
