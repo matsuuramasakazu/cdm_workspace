@@ -196,11 +196,17 @@ def exec_code(code: str, timeout: int = 15) -> Dict[str, Any]:
     ctx = get_context()
     bootstrap_code = f"import cdm_compat\n{code}"
 
+    env = os.environ.copy()
+    src_dir = str(ctx.workspace_root / "src")
+    existing_pp = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{src_dir}{os.pathsep}{existing_pp}" if existing_pp else src_dir
+
     start_time = time.time()
     try:
         result = subprocess.run(
             [str(ctx.python_executable), "-c", bootstrap_code],
             cwd=str(ctx.workspace_root),
+            env=env,
             capture_output=True,
             text=True,
             encoding="utf-8",
