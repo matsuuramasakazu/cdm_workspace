@@ -5,6 +5,8 @@ Unit tests for Universal AI Agent Harness and CDM Plugin.
 from __future__ import annotations
 
 from pathlib import Path
+
+import cdm_compat
 from cdm_workspace.harness import (
     doctor,
     verify,

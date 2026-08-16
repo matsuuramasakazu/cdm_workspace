@@ -12,6 +12,8 @@ from decimal import Decimal
 from pathlib import Path
 
 import pytest
+
+import cdm_compat
 from finos.cdm.base.datetime.BusinessDayConventionEnum import BusinessDayConventionEnum
 from finos.cdm.base.datetime.PeriodExtendedEnum import PeriodExtendedEnum
 from finos.cdm.base.datetime.daycount.DayCountFractionEnum import DayCountFractionEnum
@@ -80,7 +82,7 @@ def test_create_plain_irs_trade_defaults():
     assert trade.counterparty[1].role == CounterpartyRoleEnum.PARTY_2
 
     # Notional quantity
-    notional = trade.tradeLot[0].priceQuantity[0].quantity
+    notional = trade.tradeLot[0].priceQuantity[0].quantity[0]
     assert notional.value == Decimal("1000000000")
     assert _get_str_val(notional.unit.currency) == "JPY"
 
@@ -126,7 +128,7 @@ def test_create_plain_irs_trade_custom_parameters():
     assert _get_str_val(custom_trade.party[1].partyId[0].identifier) == "222200F9AM14CT701922"
 
     # Custom Notional and Currency
-    notional = custom_trade.tradeLot[0].priceQuantity[0].quantity
+    notional = custom_trade.tradeLot[0].priceQuantity[0].quantity[0]
     assert notional.value == Decimal("50000000")
     assert _get_str_val(notional.unit.currency) == "USD"
 

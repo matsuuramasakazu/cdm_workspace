@@ -1,6 +1,9 @@
 # Runeランタイム互換性パッチ & `cdm_compat` ライブラリ 詳細解説
 
-本文書は、`finos-cdm` (v7.1.0) および `rune-runtime` (v2.0.1+) を Python (Pydantic v2) 環境で使用する際に発生する型解決・メタデータシリアライズの問題点と、それを解消するために開発された再利用可能ライブラリ **`cdm_compat`** のアーキテクチャ・動作原理について解説します。
+本文書は、`finos-cdm` (v6.22.0+ / v7.x) および `rune-runtime` (v2.0.0+) を Python (Pydantic v2) 環境で使用する際に発生する型解決・メタデータシリアライズの問題点と、それを解消するために開発された再利用可能ライブラリ **`cdm_compat`** のアーキテクチャ・動作原理について解説します。
+
+> [!NOTE]
+> `finos-cdm` v7.1.0 から v6.22.0 へのダウングレードに伴う非互換仕様（`PriceQuantity.quantity` のリスト型化やシリアライズ差分）の詳細については、[CDM_VERSION_DOWNGRADE_6_22.md](file:///e:/dev/python/cdm_workspace/docs/CDM_VERSION_DOWNGRADE_6_22.md) をご参照ください。
 
 ---
 

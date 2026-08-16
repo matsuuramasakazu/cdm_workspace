@@ -146,13 +146,13 @@ def test_price_quantity_rebuilding():
     quantity = NonNegativeQuantitySchedule(value=Decimal("500000000"), unit=unit)
     price = PriceSchedule(value=Decimal("0.01"), priceType=PriceTypeEnum.INTEREST_RATE)
 
-    pq = PriceQuantity(quantity=quantity, price=[price])
+    pq = PriceQuantity(quantity=[quantity], price=[price])
     json_data = pq.model_dump_json(exclude_none=True)
     assert "500000000" in json_data
     assert "JPY" in json_data
 
     reloaded = PriceQuantity.model_validate_json(json_data)
-    assert reloaded.quantity.value == Decimal("500000000")
+    assert reloaded.quantity[0].value == Decimal("500000000")
 
 
 def test_trade_roundtrip_validation():

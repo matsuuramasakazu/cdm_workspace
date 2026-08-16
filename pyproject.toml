@@ -12,9 +12,9 @@ authors = [
     { name = "CDM Workspace Team" }
 ]
 dependencies = [
-    "finos-cdm>=7.1.0",
-    "rune-runtime>=2.0.1",
-    "pydantic>=2.0",
+    "finos-cdm>=6.22.0",
+    "rune-runtime>=2.0.0",
+    "pydantic>=2.10.3",
 ]
 
 [project.optional-dependencies]

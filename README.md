@@ -1,6 +1,6 @@
 # CDM Workspace (`cdm-workspace`)
 
-FINOS CDM (Common Domain Model v7.1.0) を使用した金利スワップ（IRS）取引データ構築および Rune / Pydantic v2 ランタイム互換性レイヤーを提供する Python ライブラリ・ワークスペースです。
+FINOS CDM (Common Domain Model v6.22.0+ / v7.x) を使用した金利スワップ（IRS）取引データ構築および Rune / Pydantic v2 ランタイム互換性レイヤーを提供する Python ライブラリ・ワークスペースです。
 
 ---
 
@@ -14,6 +14,7 @@ cdm_workspace/
 │   └── skills/                     # 運用手順書 (Runbooks & Skills)
 ├── docs/
 │   ├── AGENT_HARNESS.md            # AI エージェントハーネスの設計思想 & 活用ガイド
+│   ├── CDM_VERSION_DOWNGRADE_6_22.md # FINOS CDM v6.22.0 ダウングレード・非互換仕様ガイド
 │   ├── IRS_BUSINESS_EVENTS.md      # 金利スワップの TradeState & ビジネスイベント仕様書
 │   └── RUNE_COMPATIBILITY.md       # Rune/Pydantic v2 互換性パッチの詳細技術ドキュメント
 ├── src/

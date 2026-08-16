@@ -2,7 +2,7 @@
 FINOS CDM Plain Vanilla Interest Rate Swap (IRS) Generator
 
 This script demonstrates how to construct a standard Plain Vanilla Interest Rate
-Swap (JPY Fixed vs. TONA OIS) using FINOS CDM (Common Domain Model 7.1.0) and
+Swap (JPY Fixed vs. TONA OIS) using FINOS CDM (Common Domain Model 6.22.0+) and
 export it to a fully valid CDM JSON file.
 """
 
@@ -264,7 +264,7 @@ def create_plain_irs_trade(
             PartyRole(partyReference=party2, role=PartyRoleEnum.SELLER),
         ],
         counterparty=[counterparty1, counterparty2],
-        tradeLot=[TradeLot(priceQuantity=[PriceQuantity(quantity=notional_quantity)])],
+        tradeLot=[TradeLot(priceQuantity=[PriceQuantity(quantity=[notional_quantity])])],
         product=non_transferable_product,
     )
 

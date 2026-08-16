@@ -2,7 +2,7 @@
 CDM Compatibility Package (cdm_compat)
 
 Provides runtime compatibility patches and model rebuilding utilities for FINOS CDM
-(v7.1.0) running on Rune 2.0.1+ and Pydantic v2.
+(v6.22.0+ / v7.x) running on Rune 2.0.1+ and Pydantic v2.
 
 Usage:
     # Simply importing cdm_compat automatically applies all required patches and rebuilds all models:
