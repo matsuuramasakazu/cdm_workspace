@@ -9,11 +9,11 @@ FINOS CDM (Common Domain Model v7.1.0) を使用した金利スワップ（IRS�
 ```text
 cdm_workspace/
 ├── .agents/
-│   ├── rules/
-│   │   └── cdm-workspace.md        # Antigravity 階層型エージェントルール
-│   └── skills/
-│       └── cdm-workspace/          # CDM 運用 Runbook & Skill
+│   ├── agents/                     # 専門カスタムサブエージェント (Quant & Python Architect)
+│   ├── rules/                      # 不変のコーディング・設計規約 (Constraints & Rules)
+│   └── skills/                     # 運用手順書 (Runbooks & Skills)
 ├── docs/
+│   ├── AGENT_HARNESS.md            # AI エージェントハーネスの設計思想 & 活用ガイド
 │   ├── IRS_BUSINESS_EVENTS.md      # 金利スワップの TradeState & ビジネスイベント仕様書
 │   └── RUNE_COMPATIBILITY.md       # Rune/Pydantic v2 互換性パッチの詳細技術ドキュメント
 ├── src/
