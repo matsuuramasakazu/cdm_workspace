@@ -1,3 +1,35 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cdm-workspace"
+version = "0.1.0"
+description = "FINOS CDM workspace with runtime compatibility utilities and IRS trade generation"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    { name = "CDM Workspace Team" }
+]
+dependencies = [
+    "finos-cdm>=7.1.0",
+    "rune-runtime>=2.0.1",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cdm_compat = ["py.typed"]
+
 [tool.pytest.ini_options]
-pythonpath = ["."]
+minversion = "7.0"
+addopts = "-ra -q"
 testpaths = ["tests"]
+pythonpath = ["src"]

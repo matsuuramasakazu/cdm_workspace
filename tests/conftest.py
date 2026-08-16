@@ -1,7 +1,9 @@
+"""Pytest configuration for cdm_workspace and cdm_compat."""
+
 import sys
 from pathlib import Path
 
-# Ensure root workspace directory is in sys.path
-root_dir = Path(__file__).resolve().parent.parent
-if str(root_dir) not in sys.path:
-    sys.path.insert(0, str(root_dir))
+# Ensure src/ directory is in sys.path
+src_dir = Path(__file__).resolve().parent.parent / "src"
+if str(src_dir) not in sys.path:
+    sys.path.insert(0, str(src_dir))
