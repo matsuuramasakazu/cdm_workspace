@@ -1,6 +1,6 @@
 # Runeランタイム互換性パッチ & `cdm_compat` ライブラリ 詳細解説
 
-本文書は、`finos-cdm` (v6.22.0+ / v7.x) および `rune-runtime` (v2.0.0+) を Python (Pydantic v2) 環境で使用する際に発生する型解決・メタデータシリアライズの問題点と、それを解消するために開発された再利用可能ライブラリ **`cdm_compat`** のアーキテクチャ・動作原理について解説します。
+本文書は、`finos-cdm` (v6.22.0+ / v7.x) および `rune-runtime` (v2.0.0+) を Python (Pydantic v2) 環境で使用する際に発生する型解決・メタデータシリアライズ・JSONデシリアライズの問題点と、それを解消するために開発された再利用可能ライブラリ **`cdm_compat`** のアーキテクチャ・動作原理について解説します。
 
 > [!NOTE]
 > `finos-cdm` v7.1.0 から v6.22.0 へのダウングレードに伴う非互換仕様（`PriceQuantity.quantity` のリスト型化やシリアライズ差分）の詳細については、[CDM_VERSION_DOWNGRADE_6_22.md](file:///e:/dev/python/cdm_workspace/docs/CDM_VERSION_DOWNGRADE_6_22.md) をご参照ください。
@@ -14,14 +14,16 @@ CDM の Python SDK (`finos-cdm`) は、Rosetta DSL（モデリング言語）か
 
 ### なぜパッチが必要なのか？
 
-`rune-runtime` のメタデータ処理層（`rune.runtime.metadata`）および型バインディング機構には、Pydantic v2 のバリデーションパイプラインとの組み合わせにおいて、以下の課題・エッジケースが存在します：
+`rune-runtime` のメタデータ処理層（`rune.runtime.metadata`）および型バインディング機構には、Pydantic v2 のバリデーションパイプラインおよび **Rosetta CDM 公式標準 JSON 仕様（ISDA リファレンスデータ等）** との組み合わせにおいて、以下の課題・エッジケースが存在します：
 
 1. **オプショナルな複合型（ComplexType）フィールドで `None` が渡された時のバリデーションエラー**
 2. **基本型メタデータ（`StrWithMeta` 等）のリストに対するシリアライザの適用範囲のズレ（JSON出力時クラッシュ）**
 3. **オプショナルな Enum 型フィールドで `None` が渡された時のメタデータ初期化エラー**
 4. **クラス継承時における親クラスフィールドの遅延型解決（`NoneType` 縮退）**
+5. **Rosetta CDM 公式 JSON（`value` / `meta` / `globalKey` / `globalReference` / `address`）と Rune 内部形式（`@data` / `@key` / `@ref`）のスキーマ不一致による `KeyError` およびバリデーション失敗**
+6. **複合型における `FieldWithMeta` エンベロープ（`{"value": {...fields...}, "meta": {...}}`）構造による Pydantic 型不一致**
 
-これらを完全に解消し、ユーザーが依存関係や個別モデルのハードコーディングを意識することなく利用できるように設計されたパッケージが **`cdm_compat`** です。
+これらを完全に解消し、ユーザーが内部の形式差異や個別モデルのハードコーディングを意識することなく利用できるように設計されたパッケージが **`cdm_compat`** です。
 
 ---
 
@@ -34,14 +36,14 @@ CDM モデルを利用するスクリプトの冒頭で `import cdm_compat` を�
 ```python
 import cdm_compat
 from finos.cdm.event.common.Trade import Trade
-from finos.cdm.event.common.TradeIdentifier import TradeIdentifier
-from finos.cdm.event.position.Position import Position
+from finos.cdm.event.common.TradeState import TradeState
 
-# パッチおよび全モデル修復が自動適用済みのため、そのまま通常通りモデル構築・シリアライズ・検証が可能
-trade_id = TradeIdentifier(
-    assignedIdentifier=[{"identifier": {"@data": "TRADE-001"}, "version": 1}],
-    identifierType="UniqueTransactionIdentifier"
-)
+# 1. Rune 形式・Rosetta 公式 JSON 形式のいずれも自動認識・デシリアライズ可能
+trade_state = TradeState.model_validate_json(raw_json_data)
+
+# 2. モデル構築とシリアライズ
+print(f"Trade Date: {trade_state.trade.tradeDate}")
+json_output = trade_state.model_dump_json(indent=2, exclude_none=True)
 ```
 
 ### パッケージ構成
@@ -49,7 +51,7 @@ trade_id = TradeIdentifier(
 ```text
 cdm_compat/
 ├── __init__.py           # パッケージエントリポイント（自動一括修復、公開APIエクスポート）
-├── patch_metadata.py     # rune.runtime.metadata に対する低レベルランタイムパッチ
+├── patch_metadata.py     # rune.runtime.metadata / BaseDataClass に対する低レベルランタイムパッチ
 └── rebuild_models.py     # 完全汎用モデル修復エンジン（ゼロ・ハードコーディング）
 ```
 
@@ -72,7 +74,7 @@ cdm_compat/
 従来の個別修復では、`PriceQuantity` のような前方参照型や、`Trade` / `TradeIdentifier` などの継承型に対して依存関係の順序（`PriceQuantity` → `TradeLot` → `TradableProduct` → `Trade`）を人間が把握してハードコードする必要がありました。
 
 ### 汎用化アーキテクチャの実現
-`cdm_compat/rebuild_models.py` では以下の2つの汎用機構により、特定のモデル名に一切依存しない完全な自動修復を実現しています：
+`cdm_compat/rebuild_models.py` では以下の3つの汎用機構により、特定のモデル名に一切依存しない完全な自動修復を実現しています：
 
 1. **`finos._bundle` 型名前空間の自動注入**:
    - Pydantic v2 の `model_rebuild(force=True, _types_namespace=finos._bundle.__dict__)` を活用することで、`PriceQuantity` や `Observable` などの遅延文字列アノテーションを Pydantic が自動的に正しい型に解決します。型名のハードコードは不要です。
@@ -98,15 +100,7 @@ businessCenters.businessCentersReference
 オプショナルな複合型フィールドにデフォルト値 `None` が渡された際、元の `ComplexTypeMetaDataMixin.deserialize` に `obj is None` の判定が存在しないため、`dict` 判定に落ちて検証例外が発生していました。
 
 #### 対策
-```python
-orig_complex_deserialize = rmeta.ComplexTypeMetaDataMixin.deserialize
-
-@classmethod
-def _patched_complex_deserialize(cls, obj, allowed_meta: set[str]):
-    if obj is None:
-        return None
-    return orig_complex_deserialize.__func__(cls, obj, allowed_meta)
-```
+`obj is None` のガード節を追加し、安全に `None` を返却するよう修復しました。
 
 ---
 
@@ -137,26 +131,64 @@ AttributeError: 'NoneType' object has no attribute '_init_meta'
 Enum 型フィールドが `None` の場合、`model._init_meta(allowed_meta)` で `None._init_meta()` が呼ばれてクラッシュしていました。
 
 #### 対策
-```python
-@classmethod
-def _patched_enum_deserialize(cls, obj, allowed_meta: set[str]):
-    if obj is None:
-        return None
-    return orig_enum_deserialize.__func__(cls, obj, allowed_meta)
+`obj is None` のガード節を追加し、安全に `None` を返却するよう修復しました。
+
+---
+
+### パッチ 4: Rosetta CDM 標準 JSON（`value` / `meta`）と Rune ランタイム形式の双方向互換対応
+
+#### 発生するエラー
+```text
+KeyError: '@data'
+Value error, Allowed meta {'@key', '@key:external'} differs from the currently existing meta slots: {'@globalKey'}
 ```
+
+#### 原因
+Rune ランタイムの `deserialize` は内部的に `{"@data": "..."}` や `{"@key": "..."}` を前提としていますが、ISDA / FINOS CDM 公式の標準 JSON（Rosetta JSON）では基本型や Enum が `{"value": "...", "meta": {"globalKey": "..."}}` の構造を持ちます。
+また、`@data` をメタデータとしてスロットに登録してしまい、スロット制限チェック（`_init_meta`）でバリデーションエラーが発生していました。
+
+#### 対策
+1. **メタデータスロットの正規化 (`_normalize_rosetta_meta`)**:
+   - `globalKey` → `@key`
+   - `externalKey` → `@key:external`
+   - `location` → `@key:scoped`
+   - `scheme` → `@scheme`
+   - `@data`（データ本体）をメタデータ辞書から除外。
+2. **参照タグの透過抽出 (`_extract_rosetta_ref`)**:
+   - `globalReference`, `externalReference`, `address`（Scoped Reference）を検出し、Rune の `UnresolvedReference` へ自動マッピング。
+3. `BasicTypeMetaDataMixin` / `EnumWithMetaMixin` において、`@data` と `value` の両方を値として透過的に抽出・格納。
+
+---
+
+### パッチ 5: 複合型（ComplexType）における `FieldWithMeta` エンベロープの自動アンラップ
+
+#### 発生するエラー
+```text
+pydantic_core._pydantic_core.ValidationError: 4 validation errors for finos_cdm_event_common_TradeState
+trade.tradeLot.0.priceQuantity.0.quantity.0.value
+  Decimal input should be an integer, float, string or Decimal object [type=decimal_type, input_value={'value': 50000000.0, 'unit': ...}]
+```
+
+#### 原因
+Rosetta CDM JSON では、複合型オブジェクト（`NonNegativeQuantitySchedule`, `PriceSchedule`, `Observable` 等）にメタデータが付与される際、`{"value": {...actual fields...}, "meta": {...}}` というエンベロープ（ラッパー）で表現されます。
+一方、Python の `finos-cdm` モデルでは複合型自身が `ComplexTypeMetaDataMixin` を継承してフィールドとメタデータを直接保持するため、Pydantic がエンベロープの `value`（辞書）をモデルのフィールド `value: Decimal` に割り当てようとして型検証エラーとなっていました。
+
+#### 対策
+`BaseDataClass._deserialize_refs` および `ComplexTypeMetaDataMixin.deserialize` において、データが `{"value": dict, "meta": ...}` の構造を持つ場合に内部のフィールド辞書を展開（アンラップ）し、メタデータを付与した上で Pydantic バリデーションに渡す機構を追加しました。
 
 ---
 
 ## 5. テストと品質保証
 
-本パッケージには、メタデータパッチ、往復JSONシリアライズ、および汎用モデル修復機能を網羅した単体テストが付属しています。
+本パッケージには、メタデータパッチ、往復JSONシリアライズ、汎用モデル修復、および公式 IRS サンプル JSON（`ird-ex01-vanilla-swap.json`）のデシリアライズを網羅した自動テストスイートが付属しています。
 
 ```powershell
-# 単体テストの実行
-.\.venv\Scripts\python.exe -m unittest discover tests
+# テストスイートの実行
+$env:PYTHONPATH="src"
+.venv\Scripts\python.exe -m pytest -v
 ```
 
-**テスト項目:**
+**テスト項目（全22テスト）:**
 1. `test_patch_status`: パッチの自動適用と冪等性の検証
 2. `test_complex_type_none_handling`: `None` を含む複合型モデルの生成検証
 3. `test_basic_type_list_serialization_roundtrip`: `businessCenter` 等の `StrWithMeta` リストの往復検証
@@ -164,3 +196,6 @@ def _patched_enum_deserialize(cls, obj, allowed_meta: set[str]):
 5. `test_price_quantity_rebuilding`: `PriceQuantity` の数量・価格スケジュール検証
 6. `test_trade_roundtrip_validation`: `Trade` オブジェクトの完全な構築および JSON 往復パース検証
 7. `test_generic_rebuild_cdm_model`: 任意の継承モデルに対する汎用修復機能の動作検証
+8. `test_deserialize_trade_state_from_file`: `ird-ex01-vanilla-swap.json` ファイルからの完全デシリアライズ検証
+9. `test_deserialize_trade_state_from_string`: 生 JSON 文字列からのデシリアライズ検証
+10. `test_print_trade_summary_execution`: 取引属性サマリー出力機能の動作検証

@@ -22,7 +22,7 @@ Run this procedure whenever entering a new session or encountering import/enviro
 
 **Success Criteria**:
 - `Virtualenv`: Active (`.venv\Scripts\python.exe`)
-- `finos-cdm`: Version 7.1.0 or higher detected
+- `finos-cdm`: Version 6.22.0
 - `cdm_compat`: Active and patching `rune-runtime`
 
 ---
