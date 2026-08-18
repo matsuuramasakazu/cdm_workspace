@@ -332,3 +332,52 @@ def test_rosetta_reference_resolution_and_roundtrip():
     assert reloaded.tradeDate == datetime.date(2026, 8, 18)
     assert isinstance(reloaded.counterparty[0].partyReference, Party)
 
+
+def test_function_patches_and_qualification_function_execution():
+    """
+    【テストケース: Rosetta 生成関数と rune_all_elements スカラー比較パッチの動作検証】
+
+    背景・目的:
+        Rosetta DSL から生成された Qualification 関数（例: Qualify_InterestRate_IRSwap_FixedFloat）は、
+        型ヒントがグローバル名前空間で解決できない問題や、rune_all_elements がスカラー比較で
+        False を返す不具合を抱えていました。
+        cdm_compat の関数パッチによって、これらの関数が正常にインポートおよび実行できることを検証します。
+    """
+    import rune.runtime.utils as rru
+
+    # 1. Verify rune_all_elements scalar comparison
+    assert rru.rune_all_elements([True, True], "=", True) is True
+    assert rru.rune_all_elements([True, False], "=", True) is False
+    assert rru.rune_all_elements([False, False], "=", False) is True
+    assert rru.rune_all_elements([2, 2], "=", 2) is True
+    assert rru.rune_all_elements([], "=", True) is False
+
+    # 2. Verify Rosetta qualification functions can be imported and executed
+    from finos.cdm.product.qualification.functions.Qualify_InterestRate_IRSwap_FixedFloat import (
+        Qualify_InterestRate_IRSwap_FixedFloat,
+    )
+    from finos.cdm.product.qualification.functions.Qualify_BaseProduct_IRSwap import (
+        Qualify_BaseProduct_IRSwap,
+    )
+    from finos.cdm.product.qualification.functions.Qualify_SubProduct_FixedFloat import (
+        Qualify_SubProduct_FixedFloat,
+    )
+    from finos.cdm.product.qualification.functions.Qualify_AssetClass_InterestRate import (
+        Qualify_AssetClass_InterestRate,
+    )
+
+    from finos.cdm.event.common.TradeState import TradeState
+    from pathlib import Path
+
+    sample_json = Path("ird-ex01-vanilla-swap.json")
+    if sample_json.exists():
+        raw_json = sample_json.read_text(encoding="utf-8")
+        ts = TradeState.model_validate_json(raw_json)
+        et = ts.trade.product.economicTerms
+
+        assert Qualify_AssetClass_InterestRate(et) is True
+        assert Qualify_BaseProduct_IRSwap(et) is True
+        assert Qualify_SubProduct_FixedFloat(et) is True
+        assert Qualify_InterestRate_IRSwap_FixedFloat(et) is True
+
+

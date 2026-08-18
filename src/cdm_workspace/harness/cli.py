@@ -50,6 +50,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     irs_parser = subparsers.add_parser("irs", help="Generate and validate a sample Plain Vanilla IRS trade JSON")
     irs_parser.add_argument("--output", "-o", default="irs_trade.json", help="Output JSON file path")
 
+    # Command: qualify
+    qualify_parser = subparsers.add_parser("qualify", help="Qualify and classify a trade from JSON file")
+    qualify_parser.add_argument("file", help="Path to trade JSON file (e.g. ird-ex01-vanilla-swap.json)")
+
     args = parser.parse_args(argv)
 
     if not args.command:
@@ -87,6 +91,17 @@ def main(argv: Optional[List[str]] = None) -> int:
     elif args.command == "irs":
         res = generate_irs_sample(args.output)
         print(f"[OK] IRS trade generated and verified: {res['output_path']} ({res['size_bytes']:,} bytes)")
+        return 0
+
+    elif args.command == "qualify":
+        from ..qualify_trade import qualify_from_json, print_qualification_summary
+        from pathlib import Path
+        p = Path(args.file)
+        if not p.exists():
+            print(f"Error: File not found: {p}", file=sys.stderr)
+            return 1
+        res = qualify_from_json(p)
+        print_qualification_summary(res)
         return 0
 
     return 0

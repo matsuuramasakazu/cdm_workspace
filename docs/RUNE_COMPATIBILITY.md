@@ -178,17 +178,72 @@ Rosetta CDM JSON では、複合型オブジェクト（`NonNegativeQuantitySche
 
 ---
 
+### パッチ 6: Rosetta 生成関数の型解決パッチ (`patch_rosetta_function_types`)
+
+#### 発生するエラー
+```text
+NameError: name 'finos_cdm_product_template_EconomicTerms' is not defined
+```
+
+#### 原因
+Rosetta DSL から Python コードを自動生成する際、`finos.cdm.product.qualification.functions.*` 内の関数引数型アノテーション（例: `economicTerms: finos_cdm_product_template_EconomicTerms`）で参照されている内部クラス名がモジュール内でインポートされていません。
+Pydantic の `@validate_call` デコレータが型ヒントを動的評価する際に `NameError` が発生し、関数のインポート自体が失敗していました。
+
+#### 対策
+`cdm_compat.patch_functions.patch_rosetta_function_types` により、`finos._bundle` に登録されている全 CDM モデル名を `builtins` に安全に注入し、Pydantic の型ヒント解決がグローバルスコープで成功するように修復しました。
+
+---
+
+### パッチ 7: `rune.runtime.utils.rune_all_elements` のスカラー比較パッチ (`patch_rune_all_elements`)
+
+#### 発生するエラー
+```text
+# 2レグあるスワップで Qualify_AssetClass_InterestRate が False になる
+Qualify_AssetClass_InterestRate(economicTerms) -> False
+```
+
+#### 原因
+`rune-runtime` の `rune_all_elements(lhs, op, rhs)` は、2つのリストの長さが完全一致することを前提とした実装になっていました：
+```python
+# rune-runtime 元の実装
+def rune_all_elements(lhs, op, rhs) -> bool:
+    cmp = _cmp[op]
+    op1 = _to_list(lhs)
+    op2 = _to_list(rhs)
+    return all(cmp(el1, el2) for el1, el2 in zip(op1, op2)) if len(op1) == len(op2) else False
+```
+DSL が「リストの全要素が `True` か」を判定するために `rune_all_elements([True, True], "=", True)` を呼び出すと、`rhs` 側の長さが 1 であるため `len(op1) == len(op2)` が `False` となり、常に `False` が返ってしまう重大な不具合が存在していました。
+
+#### 対策
+`rhs` がスカラー値の場合には、`lhs` のすべての要素に対して `cmp(el, rhs)` をブロードキャスト評価するようにパッチを適用しました。
+
+---
+
+### パッチ 8: `FuncProxy.__call__` の `raw_function` 優先実行パッチ (`patch_func_proxy_call`)
+
+#### 発生するエラー
+```text
+pydantic_core._pydantic_core.ValidationError: Allowed meta {'@ref:scoped'} differs from existing meta slots: {'@key:scoped'}
+```
+
+#### 原因
+Rosetta 生成関数は `@replaceable`（`FuncProxy`）と `@validate_call` で装飾されています。`cdm_compat.resolve_model_references` で参照解決済みのモデルオブジェクトを渡すと、`@validate_call` が引数を再バリデーションする際に内部メタデータスロットの不一致エラーを引き起こしていました。
+
+#### 対策
+`FuncProxy.__call__` において、`self._func` の `@validate_call` ラッパーの下にある `raw_function`（素の Python 関数）を直接呼び出すようにパッチし、再バリデーションのオーバーヘッドとメタデータ衝突をバイパスして安全かつ高速に判定関数を実行可能にしました。
+
+---
+
 ## 5. テストと品質保証
 
-本パッケージには、メタデータパッチ、往復JSONシリアライズ、汎用モデル修復、および公式 IRS サンプル JSON（`ird-ex01-vanilla-swap.json`）のデシリアライズを網羅した自動テストスイートが付属しています。
+本パッケージには、メタデータパッチ、往復JSONシリアライズ、汎用モデル修復、Rosetta関数実行、および公式 IRS サンプル JSON（`ird-ex01-vanilla-swap.json`）の商品判定を網羅した自動テストスイートが付属しています。
 
 ```powershell
-# テストスイートの実行
-$env:PYTHONPATH="src"
+# 全テストスイートの実行（全30テスト）
 .venv\Scripts\python.exe -m pytest -v
 ```
 
-**テスト項目（全22テスト）:**
+**テスト項目（抜粋）:**
 1. `test_patch_status`: パッチの自動適用と冪等性の検証
 2. `test_complex_type_none_handling`: `None` を含む複合型モデルの生成検証
 3. `test_basic_type_list_serialization_roundtrip`: `businessCenter` 等の `StrWithMeta` リストの往復検証
@@ -197,5 +252,8 @@ $env:PYTHONPATH="src"
 6. `test_trade_roundtrip_validation`: `Trade` オブジェクトの完全な構築および JSON 往復パース検証
 7. `test_generic_rebuild_cdm_model`: 任意の継承モデルに対する汎用修復機能の動作検証
 8. `test_deserialize_trade_state_from_file`: `ird-ex01-vanilla-swap.json` ファイルからの完全デシリアライズ検証
-9. `test_deserialize_trade_state_from_string`: 生 JSON 文字列からのデシリアライズ検証
-10. `test_print_trade_summary_execution`: 取引属性サマリー出力機能の動作検証
+9. `test_function_patches_and_qualification_function_execution`: Rosetta 関数型解決および `rune_all_elements` パッチの検証
+10. `test_qualify_vanilla_swap_from_file`: `ird-ex01-vanilla-swap.json` を入力したバニラ固定/変動金利スワップ判定の完全検証
+11. `test_qualify_created_irs_trade_ois`: JPY TONA OIS スワップの判定検証
+12. `test_is_vanilla_fixed_float_swap_helper`: 簡易判定ヘルパー関数の検証
+

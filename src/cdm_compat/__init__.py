@@ -12,6 +12,7 @@ Usage:
 
 from __future__ import annotations
 
+from .patch_functions import apply_function_patches
 from .patch_metadata import apply_metadata_patches, resolve_model_references
 from .rebuild_models import (
     rebuild_all_cdm_models,
@@ -24,6 +25,7 @@ from .rebuild_models import (
 __all__ = [
     "apply_patches",
     "apply_metadata_patches",
+    "apply_function_patches",
     "resolve_model_references",
     "rebuild_all_cdm_models",
     "rebuild_standard_models",
@@ -43,7 +45,7 @@ def is_patched() -> bool:
 
 def apply_patches() -> bool:
     """
-    Applies all metadata patches and rebuilds all CDM models.
+    Applies all metadata patches, function patches, and rebuilds all CDM models.
     Idempotent: safe to call multiple times.
 
     Returns:
@@ -54,10 +56,11 @@ def apply_patches() -> bool:
         return False
 
     meta_ok = apply_metadata_patches()
+    func_ok = apply_function_patches()
     models_ok = rebuild_standard_models()
 
     _PATCHES_APPLIED = True
-    return meta_ok or models_ok
+    return meta_ok or func_ok or models_ok
 
 
 # Automatically apply patches upon importing cdm_compat
