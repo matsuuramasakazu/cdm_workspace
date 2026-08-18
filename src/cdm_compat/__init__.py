@@ -12,7 +12,7 @@ Usage:
 
 from __future__ import annotations
 
-from .patch_metadata import apply_metadata_patches
+from .patch_metadata import apply_metadata_patches, resolve_model_references
 from .rebuild_models import (
     rebuild_all_cdm_models,
     rebuild_cdm_model,
@@ -24,6 +24,7 @@ from .rebuild_models import (
 __all__ = [
     "apply_patches",
     "apply_metadata_patches",
+    "resolve_model_references",
     "rebuild_all_cdm_models",
     "rebuild_standard_models",
     "rebuild_cdm_model",

@@ -34,6 +34,8 @@ def _normalize_rosetta_meta(meta: dict[str, Any]) -> dict[str, Any]:
             if isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
                 loc_val = v[0].get("value")
                 normalized["@key:scoped"] = loc_val
+            elif isinstance(v, dict):
+                normalized["@key:scoped"] = v.get("value")
             else:
                 normalized["@key:scoped"] = v
         elif k == "scheme":
@@ -68,6 +70,84 @@ def _extract_rosetta_ref(data: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def resolve_model_references(root_obj: Any) -> Any:
+    """
+    Recursively links parent pointers and resolves all UnresolvedReference instances
+    within a Rune / FINOS CDM object tree to their actual target model objects.
+
+    Args:
+        root_obj: Root CDM model instance (e.g. TradeState, Trade, etc.)
+
+    Returns:
+        The root object with all references resolved and bound.
+    """
+    import rune.runtime.metadata as rmeta
+    import rune.runtime.base_data_class as rbdc
+
+    visited_parents: set[int] = set()
+
+    def _setup_parents_recursive(obj: Any, parent: Any = None) -> None:
+        if obj is None:
+            return
+        obj_id = id(obj)
+        if obj_id in visited_parents:
+            return
+        visited_parents.add(obj_id)
+
+        # Only BaseDataClass instances (complex models) need parent linking
+        if isinstance(obj, rbdc.BaseDataClass) and parent is not None:
+            obj._set_rune_parent(parent)
+
+        if isinstance(obj, (list, tuple)):
+            for item in obj:
+                _setup_parents_recursive(item, parent)
+        elif isinstance(obj, rbdc.BaseDataClass):
+            for prop_nm, val in list(obj.__dict__.items()):
+                if not prop_nm.startswith("_") and prop_nm != rmeta.PARENT_PROP:
+                    _setup_parents_recursive(val, parent=obj)
+
+    _setup_parents_recursive(root_obj)
+
+    visited_resolve: set[int] = set()
+
+    def _resolve_refs_recursive(obj: Any) -> None:
+        if obj is None:
+            return
+        obj_id = id(obj)
+        if obj_id in visited_resolve:
+            return
+        visited_resolve.add(obj_id)
+
+        if isinstance(obj, (list, tuple)):
+            for item in obj:
+                _resolve_refs_recursive(item)
+        elif hasattr(obj, "__dict__"):
+            refs_to_bind = []
+            for prop_nm, val in list(obj.__dict__.items()):
+                if isinstance(val, (rmeta.UnresolvedReference, rmeta.Reference)):
+                    try:
+                        ref = val.get_reference(obj)
+                        refs_to_bind.append((prop_nm, ref))
+                    except Exception as exc:
+                        logger.debug("Could not resolve reference for %s: %s", prop_nm, exc)
+
+            for prop_nm, ref in refs_to_bind:
+                try:
+                    obj._bind_property_to(prop_nm, ref)
+                except Exception:
+                    # Fallback direct bind if property annotations differ
+                    obj.__dict__[prop_nm] = ref.target
+                    refs = obj.__dict__.setdefault(rmeta.REFS_CONTAINER, {})
+                    refs[prop_nm] = (ref.target_key, ref.key_type)
+
+            for prop_nm, val in list(obj.__dict__.items()):
+                if not prop_nm.startswith("_") and prop_nm != rmeta.PARENT_PROP:
+                    _resolve_refs_recursive(val)
+
+    _resolve_refs_recursive(root_obj)
+    return root_obj
+
+
 def apply_metadata_patches() -> bool:
     """
     Applies patches to rune.runtime.metadata and base_data_class mixins.
@@ -87,7 +167,25 @@ def apply_metadata_patches() -> bool:
         logger.warning("rune.runtime could not be imported; skipping metadata patches.")
         return False
 
-    # 0. Patch BaseMetaDataMixin and reference creation
+    # 0. Patch BaseMetaDataMixin duplicate-safe object map updating
+    def _safe_update_object_maps_fn(self: Any, new_maps: dict[Any, Any]) -> None:
+        if parent := self.get_rune_parent():
+            scoped, reduced_maps = self._extract_scoped_map(new_maps)
+            parent._update_object_maps(reduced_maps)
+            if not scoped:
+                return
+            new_maps = {rmeta.KeyType.SCOPED: scoped}
+
+        obj_maps = self.__dict__.setdefault(rmeta.RUNE_OBJ_MAPS, {})
+        for map_type, new_map in new_maps.items():
+            local_map = obj_maps.setdefault(map_type, {})
+            for k, v in new_map.items():
+                if k not in local_map:
+                    local_map[k] = v
+
+    rmeta.BaseMetaDataMixin._update_object_maps = _safe_update_object_maps_fn
+
+    # Patch BaseMetaDataMixin and reference creation
     def _create_unresolved_ref_fn(cls: Any, metadata: dict[str, Any]) -> Any:
         if not isinstance(metadata, dict):
             return None
@@ -102,13 +200,17 @@ def apply_metadata_patches() -> bool:
 
     # Patch BaseDataClass._deserialize_refs for Rosetta reference objects & FieldWithMeta envelopes
     def _deserialize_refs_fn(cls: Any, data: Any, handler: Any) -> Any:
+        metadata: dict[str, Any] = {}
         if isinstance(data, dict):
             if aux := cls._create_unresolved_ref(data):
                 return aux
             if "meta" in data and isinstance(data["meta"], dict):
-                metadata = _normalize_rosetta_meta(data["meta"])
+                metadata.update(_normalize_rosetta_meta(data["meta"]))
                 if aux := cls._create_unresolved_ref(metadata):
                     return aux
+            for k, v in data.items():
+                if k.startswith("@") and k != "@data":
+                    metadata[k] = v
 
             # Check if wrapped in Rosetta FieldWithMeta envelope: {"value": {...}, "meta": {...}}
             if "value" in data and isinstance(data["value"], dict):
@@ -119,12 +221,38 @@ def apply_metadata_patches() -> bool:
                     data["meta"] = meta_dict
 
         obj = handler(data)
+        if metadata and isinstance(obj, rmeta.BaseMetaDataMixin):
+            obj.__dict__[rmeta.META_CONTAINER] = metadata
+            obj._register_keys(metadata)
         if hasattr(obj, "_init_rune_parent"):
             obj._init_rune_parent()
             obj.resolve_references(ignore_dangling=True, recurse=False)
         return obj
 
     rbdc.BaseDataClass._deserialize_refs = classmethod(_deserialize_refs_fn)
+
+    # Patch BaseDataClass._serialize_refs to safely serialize references, include metadata, and break recursion cycles
+    def _safe_serialize_refs_fn(self: Any, serializer: Any, info: Any) -> Any:
+        refs = self._get_rune_refs_container()
+        meta = self.serialise_meta() if hasattr(self, "serialise_meta") else {}
+        if not refs:
+            res = serializer(self, info)
+            return {**meta, **res}
+        saved: dict[str, Any] = {}
+        for prop_nm, (key, ref_type) in refs.items():
+            if prop_nm in self.__dict__:
+                saved[prop_nm] = self.__dict__[prop_nm]
+                self.__dict__[prop_nm] = {ref_type.rune_ref_tag: key}
+        try:
+            res = serializer(self, info)
+            for prop_nm, (key, ref_type) in refs.items():
+                res[prop_nm] = {ref_type.rune_ref_tag: key}
+            return {**meta, **res}
+        finally:
+            for prop_nm, orig_val in saved.items():
+                self.__dict__[prop_nm] = orig_val
+
+    rbdc.BaseDataClass._serialize_refs = _safe_serialize_refs_fn
 
     # 1. Patch ComplexTypeMetaDataMixin
     orig_complex_deserialize = rmeta.ComplexTypeMetaDataMixin.deserialize
@@ -176,11 +304,22 @@ def apply_metadata_patches() -> bool:
             return model
         return orig_complex_deserialize.__func__(cls, obj, allowed_meta)
 
+    def _format_ref_dict(ref_obj: Any) -> dict[str, Any]:
+        if isinstance(ref_obj, rmeta.UnresolvedReference):
+            return {ref_obj.key_type.rune_ref_tag: ref_obj.key}
+        if isinstance(ref_obj, rmeta.Reference):
+            return {ref_obj.key_type.rune_ref_tag: ref_obj.target_key}
+        return {}
+
     def _complex_serialise_fn(cls: Any, obj: Any) -> Any:
         if obj is None:
             return None
         if isinstance(obj, (list, tuple)):
             return [_complex_serialise_fn(cls, item) for item in obj]
+        if isinstance(obj, dict):
+            return obj
+        if isinstance(obj, (rmeta.UnresolvedReference, rmeta.Reference, rmeta.BaseReference)):
+            return _format_ref_dict(obj)
         return orig_complex_serialise.__func__(cls, obj)
 
     rmeta.ComplexTypeMetaDataMixin.deserialize = classmethod(_complex_deserialize_fn)
@@ -250,6 +389,10 @@ def apply_metadata_patches() -> bool:
             return None
         if isinstance(obj, (list, tuple)):
             return [_basic_serialise_fn(cls, item, base_type) for item in obj]
+        if isinstance(obj, dict):
+            return obj
+        if isinstance(obj, (rmeta.UnresolvedReference, rmeta.Reference, rmeta.BaseReference)):
+            return _format_ref_dict(obj)
         return orig_basic_serialise.__func__(cls, obj, base_type)
 
     rmeta.BasicTypeMetaDataMixin.deserialize = classmethod(_basic_deserialize_fn)
@@ -295,6 +438,10 @@ def apply_metadata_patches() -> bool:
             return None
         if isinstance(obj, (list, tuple)):
             return [_enum_serialise_fn(cls, item, handler, info) for item in obj]
+        if isinstance(obj, dict):
+            return obj
+        if isinstance(obj, (rmeta.UnresolvedReference, rmeta.Reference, rmeta.BaseReference)):
+            return _format_ref_dict(obj)
         if isinstance(obj, rmeta._EnumWrapper):
             res = obj.serialise_meta()
             res["@data"] = handler(obj.enum_instance, info)

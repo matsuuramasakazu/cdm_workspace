@@ -240,3 +240,95 @@ def test_generic_rebuild_cdm_model():
     assert ChildModel.model_fields["name"].annotation is str
     instance = ChildModel(name="test_val")
     assert instance.name == "test_val"
+
+
+def test_rosetta_reference_resolution_and_roundtrip():
+    """
+    【テストケース: Rosetta CDM 参照ポインタの解決と JSON ラウンドトリップ検証】
+
+    背景・目的:
+        Rosetta CDM 形式の JSON（globalReference, externalReference, address）から
+        デシリアライズされたモデルにおいて、cdm_compat.resolve_model_references() が
+        未解決参照（UnresolvedReference）を実体オブジェクトへ解決（Resolve）し、
+        さらに model_dump_json() で安全にシリアライズ・再復元できることを検証します。
+    """
+    sample_json = """{
+      "party": [
+        {
+          "partyId": [{"identifier": {"value": "LEI-A"}}],
+          "name": {"value": "Bank Alpha"},
+          "meta": {"globalKey": "KEY_PARTY_A", "externalKey": "partyA"}
+        },
+        {
+          "partyId": [{"identifier": {"value": "LEI-B"}}],
+          "name": {"value": "Bank Beta"},
+          "meta": {"globalKey": "KEY_PARTY_B", "externalKey": "partyB"}
+        }
+      ],
+      "counterparty": [
+        {
+          "role": "Party1",
+          "partyReference": {"globalReference": "KEY_PARTY_A", "externalReference": "partyA"}
+        },
+        {
+          "role": "Party2",
+          "partyReference": {"globalReference": "KEY_PARTY_B", "externalReference": "partyB"}
+        }
+      ],
+      "tradeIdentifier": [
+        {
+          "assignedIdentifier": [{"identifier": "TRADE-999"}],
+          "issuerReference": {"globalReference": "KEY_PARTY_A"}
+        }
+      ],
+      "product": {
+        "economicTerms": {
+          "payout": [
+            {
+              "InterestRatePayout": {
+                "payerReceiver": {"payer": "Party1", "receiver": "Party2"}
+              }
+            }
+          ]
+        }
+      },
+      "tradeLot": [
+        {
+          "priceQuantity": [{}]
+        }
+      ],
+      "tradeDate": "2026-08-18"
+    }"""
+
+    trade = Trade.model_validate_json(sample_json)
+    assert trade.tradeDate == datetime.date(2026, 8, 18)
+
+    # Resolve references
+    trade = cdm_compat.resolve_model_references(trade)
+
+    # 1. Verify partyReference is bound directly to the Party instance
+    cp = trade.counterparty[0]
+    assert isinstance(cp.partyReference, Party)
+    assert getattr(cp.partyReference.name, "value", cp.partyReference.name) == "Bank Alpha"
+
+    cp2 = trade.counterparty[1]
+    assert isinstance(cp2.partyReference, Party)
+    assert getattr(cp2.partyReference.name, "value", cp2.partyReference.name) == "Bank Beta"
+
+    # 2. Verify issuerReference is bound directly to the Party instance
+    tid = trade.tradeIdentifier[0]
+    assert isinstance(tid.issuerReference, Party)
+    assert getattr(tid.issuerReference.name, "value", tid.issuerReference.name) == "Bank Alpha"
+
+    # 3. Verify safe serialization (no recursion or type errors)
+    json_out = trade.model_dump_json(indent=2, exclude_none=True)
+    assert "Bank Alpha" in json_out
+    assert "TRADE-999" in json_out
+    assert "@ref" in json_out
+
+    # 4. Verify re-deserialization
+    reloaded = Trade.model_validate_json(json_out)
+    reloaded = cdm_compat.resolve_model_references(reloaded)
+    assert reloaded.tradeDate == datetime.date(2026, 8, 18)
+    assert isinstance(reloaded.counterparty[0].partyReference, Party)
+

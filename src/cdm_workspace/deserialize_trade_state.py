@@ -10,8 +10,14 @@ the trade lifecycle hierarchy.
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Union
+
+# Add src/ to sys.path if running as a standalone script
+_SRC_DIR = Path(__file__).resolve().parent.parent
+if str(_SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(_SRC_DIR))
 
 # --- Step 1: Initialize CDM Compatibility Layer ---
 # Always import cdm_compat before any finos.cdm.* imports to ensure
@@ -44,6 +50,8 @@ def deserialize_trade_state_from_json(json_path_or_str: Union[str, Path]) -> Tra
 
     # Use Pydantic v2 model_validate_json for high-performance deserialization
     trade_state = TradeState.model_validate_json(raw_json_str)
+    # Resolve all internal and scoped references to actual target model objects
+    trade_state = cdm_compat.resolve_model_references(trade_state)
     return trade_state
 
 
@@ -64,16 +72,25 @@ def print_trade_summary(trade_state: TradeState) -> None:
         for idx, tid in enumerate(trade.tradeIdentifier, start=1):
             for aid in tid.assignedIdentifier or []:
                 id_val = getattr(aid.identifier, "value", aid.identifier)
-                print(f"Trade Identifier [{idx}] : {id_val}")
+                issuer_ref = getattr(tid.issuerReference, "name", getattr(tid.issuerReference, "partyId", None))
+                issuer_str = f" (Issuer: {issuer_ref})" if issuer_ref else ""
+                print(f"Trade Identifier [{idx}] : {id_val}{issuer_str}")
 
-    # 2. Parties
-    print("\n--- Parties ---")
+    # 2. Parties & Counterparties
+    print("\n--- Parties & Counterparties ---")
     if trade.party:
         for idx, party in enumerate(trade.party, start=1):
             party_name = getattr(party.name, "value", party.name) if party.name else "(Unnamed)"
             lei = party.partyId[0].identifier if party.partyId else "N/A"
             lei_val = getattr(lei, "value", lei)
             print(f"Party [{idx}] : {party_name} (LEI/ID: {lei_val})")
+
+    if trade.counterparty:
+        for idx, cp in enumerate(trade.counterparty, start=1):
+            role = getattr(cp.role, "value", cp.role)
+            p_ref = cp.partyReference
+            p_name = getattr(p_ref, "name", "N/A") if p_ref else "N/A"
+            print(f"Counterparty [{idx}] : Role = {role} -> Party = {p_name}")
 
     # 3. Product & Taxonomy
     print("\n--- Product Classification ---")
@@ -105,6 +122,17 @@ def print_trade_summary(trade_state: TradeState) -> None:
                 if irs.calculationPeriodDates.terminationDate and irs.calculationPeriodDates.terminationDate.adjustableDate:
                     term_date = str(irs.calculationPeriodDates.terminationDate.adjustableDate.unadjustedDate)
 
+            # Notional Quantity via resolved quantitySchedule
+            notional_info = ""
+            if irs.priceQuantity and irs.priceQuantity.quantitySchedule:
+                sched = irs.priceQuantity.quantitySchedule
+                q_val = getattr(sched, "value", None)
+                q_unit = getattr(sched, "unit", None)
+                q_curr = getattr(q_unit, "currency", "") if q_unit else ""
+                q_curr_val = getattr(q_curr, "value", q_curr)
+                if q_val is not None:
+                    notional_info = f", Notional = {q_val:,.2f} {q_curr_val}"
+
             # Leg Type & Rate details
             leg_type = "Unknown"
             rate_info = ""
@@ -113,17 +141,20 @@ def print_trade_summary(trade_state: TradeState) -> None:
                     leg_type = "Fixed Rate Leg"
                     fixed_spec = irs.rateSpecification.FixedRateSpecification
                     if fixed_spec.rateSchedule and fixed_spec.rateSchedule.price:
-                        rate_val = getattr(fixed_spec.rateSchedule.price, "value", None)
-                        rate_info = f", Rate = {rate_val}"
+                        price_sched = fixed_spec.rateSchedule.price
+                        rate_val = getattr(price_sched, "value", None)
+                        rate_info = f", Fixed Rate = {rate_val}"
                 elif irs.rateSpecification.FloatingRateSpecification:
                     leg_type = "Floating Rate Leg"
                     float_spec = irs.rateSpecification.FloatingRateSpecification
-                    rate_info = f", RateOption Address Ref"
+                    rate_opt = float_spec.rateOption
+                    rate_opt_type = getattr(rate_opt, "floatingRateIndex", getattr(rate_opt, "_FQRTN", "RateIndex"))
+                    rate_info = f", Floating Index = {rate_opt_type}"
 
             print(f"Leg [{leg_idx}] : {leg_type}")
             print(f"  Payer / Receiver : {payer} -> {receiver}")
             print(f"  Day Count Fraction: {dcf}")
-            print(f"  Calculation Period: {eff_date} to {term_date}{rate_info}")
+            print(f"  Calculation Period: {eff_date} to {term_date}{notional_info}{rate_info}")
 
     # 5. Notional & Pricing (TradeLot)
     print("\n--- Trade Lot & Notional Details ---")
