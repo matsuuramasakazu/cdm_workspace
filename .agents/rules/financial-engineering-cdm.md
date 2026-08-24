@@ -1,14 +1,14 @@
 # Financial Engineering & FINOS CDM Rules
 
-These rules enforce mathematical accuracy, standard financial conventions, and FINOS CDM integrity across the workspace.
+These rules enforce mathematical precision, ISDA financial conventions, and FINOS CDM structural integrity.
 
 ## Financial Calculations & Conventions
-- **Precision**: Monetary amounts and rates must use `Decimal` or float with appropriate precision; never rely on implicit float rounding for financial settlement amounts.
-- **Day Count Conventions**: Explicitly declare day count fractions (e.g. `ACT_365_FIXED` for JPY/GBP, `ACT_360` for USD/EUR, `30_360` for fixed legs).
-- **Business Day Rolls**: Always define business day adjustments and specify business centers (e.g., `JPTO`, `USNY`, `GBLO`).
+- **Precision**: Monetary amounts, accruals, and rates must use `Decimal` with explicit rounding rules (e.g., `ROUND_HALF_UP`); never rely on raw float arithmetic for financial settlements.
+- **Day Count Fractions**: Explicitly specify day count conventions (e.g., `ACT_365_FIXED` for JPY/GBP, `ACT_360` for USD/EUR, `30_360` for fixed legs).
+- **Business Day Adjustments**: Explicitly define business day roll conventions (e.g., `MODIFIED_FOLLOWING`, `FOLLOWING`) and business centers (e.g., `JPTO`, `USNY`, `GBLO`).
 
-## FINOS CDM Usage
-- **Mandatory Compatibility Import**: Any module importing `finos.cdm.*` must import `cdm_compat` first to prevent circular import failures.
-- **Serialization**: Use Pydantic v2 `model_dump_json(indent=2, exclude_none=True)` for serializing CDM objects.
-- **Deserialization**: Use `ModelClass.model_validate_json(json_str)` for validating JSON input against CDM schemas.
-- **Avoid Rosetta Functions**: Prefer direct Pydantic model construction over calling `finos.cdm.*.functions` which contain Python 3.12+ syntax incompatibilities.
+## FINOS CDM Model Integrity
+- **Model Construction**: Prefer direct, explicit Pydantic model instantiations over generated `finos.cdm.*.functions` (which contain Python 3.12+ syntax issues).
+- **Type Safety**: Distinguish clearly between metadata wrappers (`FieldWithMetaDate`, `ReferenceWithMeta...`), primitives, and Enum members.
+- **ISDA Event Alignment**: Ensure event instructions (Execution, ClearedTrade, Reset, CashTransfer, Novation, Termination) correspond to standard ISDA / CCP workflows.
+

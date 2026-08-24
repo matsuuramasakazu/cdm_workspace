@@ -143,38 +143,50 @@ sequenceDiagram
 
 ---
 
-## 5. ⚙️ 「エージェント割り当て」を担保する設定構造
+## 5. ⚙️ 「エージェント割り当て」とコンテキスト分離を担保する設定構造
 
-「各フェーズでどのエージェントが起動・委譲されるか」は、ハーネスコード単体ではなく、**Antigravity の階層型カスタマイズ設定** によって厳格に定義・担保されています。
+「各フェーズでどのエージェントが起動・委譲されるか」および「各エージェントがどのコンテキストを参照すべきか」は、**Antigravity の階層型カスタマイズ設定** と **最小コンテキストの原則（Principle of Minimal Context）** によって厳格に定義・分離されています。
 
 ```text
 .agents/
-├── agents/                       # 1. サブエージェントの定義（役割・実行権限・委譲フラグ）
-│   ├── finos-cdm-financial-analyst.md    (role: Quant & CDM Analyst, subagent: true)
-│   └── python-clean-architecture-tdd.md  (role: Python Architect, subagent: true)
+├── agents/                       # 1. 専門サブエージェント定義（固有ペルソナ & 入出力プロトコル）
+│   ├── finos-cdm-financial-analyst.md    (role: Quant & CDM Analyst, 仕様策定専任)
+│   └── python-clean-architecture-tdd.md  (role: Python Architect, 設計・TDD実装専任)
 ├── rules/                        # 2. 不変の制約・コーディング規約（Do's & Don'ts）
 │   ├── cdm-workspace.md
 │   ├── financial-engineering-cdm.md
 │   └── python-clean-architecture-tdd.md
 └── skills/                       # 3. ハーネス操作の実行マニュアル（Runbooks）
     └── cdm-workspace/SKILL.md
-AGENTS.md                         # 4. メインエージェントのオーケストレーション憲章
+AGENTS.md                         # 4. 共通実行基盤 & オーケストレーション憲章 (L0)
 ```
 
-### 設定とハーネスの役割分担:
+### 5.1 3層コンテキスト分離マトリクス (Context Separation Matrix)
 
-1. **エージェントの能力と役割宣言 (`.agents/agents/*.md`)**:
-   - YAML Frontmatter で `subagent: true`, `role`, `description`, `commandExecutionPolicy: auto` を設定。
-   - これにより、Antigravity は「金融や CDM 調査の依頼」を `finos-cdm-financial-analyst` に、「Python 実装やリファクタリングの依頼」を `python-clean-architecture-tdd` に正確にルーティングします。
+不要な情報の混入（コンテキスト汚染）と多重記述（DRY違反）を防ぐため、以下のように保持情報を厳密に仕分けています。
 
-2. **オーケストレーション方針の定義 (`AGENTS.md`)**:
-   - メインエージェントがタスクを受けた際、まず環境健全性を確認し、次にアナリストに設計を委譲し、最後にアーキテクトに実装を委譲するという**協調シーケンス**を明記。
+| コンテキスト要素 | [`AGENTS.md`](file:///e:/dev/python/cdm_workspace/AGENTS.md)<br/>(共通基盤 L0) | [`finos-cdm-financial-analyst`](file:///e:/dev/python/cdm_workspace/.agents/agents/finos-cdm-financial-analyst.md)<br/>(仕様策定専任 L2) | [`python-clean-architecture-tdd`](file:///e:/dev/python/cdm_workspace/.agents/agents/python-clean-architecture-tdd.md)<br/>(設計・実装専任 L2) |
+| :--- | :---: | :---: | :---: |
+| **Python インタプリタ** (`.venv\Scripts\python.exe`) | **保持** | 参照 | 参照 |
+| **シェルタイムアウト** (`WaitMsBeforeAsync: 10000`) | **保持** | 参照 | 参照 |
+| **オーケストレーション連携フロー** (Handoff Flow) | **保持** | - | - |
+| **CDM 互換ルール** (`import cdm_compat`) | **保持** | 参照 | 参照 |
+| **ISDA 業務イベント・ライフサイクル定義** | - | **保持 (中核)** | - |
+| **CDM スキーマ階層・名前空間構造** | - | **保持 (中核)** | - |
+| **CDM 動的調査プロトコル** (`harness inspect/exec`) | - | **保持 (中核)** | - |
+| **金融仕様書 (Spec DTO / JSON) 出力** | - | **保持 (成果物)** | - |
+| **Clean Architecture 4層設計 & ACL** | - | - | **保持 (中核)** |
+| **TDD サイクル (Red-Green-Refactor)** | - | - | **保持 (中核)** |
+| **pytest テスト実行 & 検証コマンド** | - | - | **保持 (中核)** |
+| **Python 3.12+ / Pydantic v2 実装パターン** | - | - | **保持 (中核)** |
 
-3. **ハーネス操作手順の提供 (`.agents/skills/cdm-workspace/SKILL.md`)**:
-   - 各サブエージェントがハーネスの `doctor`, `inspect`, `verify` などを迷わず実行できるよう、Runbook 1〜5 として操作手順を定義。
+### 5.2 コンテキスト分離の設計意図
+1. **Analyst からのノイズ完全排除**:
+   - `finos-cdm-financial-analyst` は「仕様調査・定義」に特化するため、pytest の実行方法、TDD 規約、Clean Architecture のレイヤー実装詳細などの情報は持たせません。
+   - 仕様を調査するために必要な「Harness CLI 実行コマンド（`inspect`, `exec`, `events`）」のみを調査プロトコルとして保持します。
+2. **Architect への仕様ハンドオフ**:
+   - `python-clean-architecture-tdd` は Analyst から渡された「金融仕様書（Spec / JSON）」を入力とし、Pure Domain と ACL (CDM Adapter) にマッピングして TDD で実装・検証する責務に集中します。
 
-4. **ハーネス実行基盤 (`src/cdm_workspace/harness/`)**:
-   - 上記の設定に基づきエージェントから呼び出される「決定論的・安全・ステートレスな実行エンジン」として機能。
 
 ---
 
