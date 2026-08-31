@@ -146,13 +146,19 @@ def test_price_quantity_rebuilding():
     quantity = NonNegativeQuantitySchedule(value=Decimal("500000000"), unit=unit)
     price = PriceSchedule(value=Decimal("0.01"), priceType=PriceTypeEnum.INTEREST_RATE)
 
-    pq = PriceQuantity(quantity=[quantity], price=[price])
+    import typing
+    ann = PriceQuantity.model_fields["quantity"].annotation
+    is_list = typing.get_origin(ann) is list or any(typing.get_origin(a) is list for a in typing.get_args(ann))
+    q_arg = [quantity] if is_list else quantity
+
+    pq = PriceQuantity(quantity=q_arg, price=[price])
     json_data = pq.model_dump_json(exclude_none=True)
     assert "500000000" in json_data
     assert "JPY" in json_data
 
     reloaded = PriceQuantity.model_validate_json(json_data)
-    assert reloaded.quantity[0].value == Decimal("500000000")
+    reloaded_qty = reloaded.quantity[0] if is_list else reloaded.quantity
+    assert reloaded_qty.value == Decimal("500000000")
 
 
 def test_trade_roundtrip_validation():
@@ -368,11 +374,13 @@ def test_function_patches_and_qualification_function_execution():
 
     from finos.cdm.event.common.TradeState import TradeState
     from pathlib import Path
+    from cdm_workspace.deserialize_trade_state import get_sample_irs_json_path
 
-    sample_json = Path("ird-ex01-vanilla-swap.json")
+    sample_json = get_sample_irs_json_path()
     if sample_json.exists():
         raw_json = sample_json.read_text(encoding="utf-8")
         ts = TradeState.model_validate_json(raw_json)
+        ts = cdm_compat.resolve_model_references(ts)
         et = ts.trade.product.economicTerms
 
         assert Qualify_AssetClass_InterestRate(et) is True
@@ -426,6 +434,7 @@ def test_standalone_model_validation():
         "FloatingRateIndex": {
             "identifier": [{"identifier": {"value": "EUR-LIBOR-BBA"}, "identifierType": "Other"}],
             "assetClass": "InterestRate",
+            "assetType": "Other",
             "floatingRateIndex": {"value": "EUR-LIBOR-BBA"},
             "indexTenor": {"periodMultiplier": 6, "period": "M", "meta": {"globalKey": "107"}},
         }

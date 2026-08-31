@@ -97,7 +97,8 @@ def print_trade_summary(trade_state: TradeState) -> None:
     if trade.product and trade.product.taxonomy:
         for tax in trade.product.taxonomy:
             source = getattr(tax.source, "value", tax.source)
-            qualifier = getattr(tax.productQualifier, "value", tax.productQualifier)
+            qual_obj = getattr(tax, "productQualifier", None) or getattr(getattr(tax, "value", None), "name", None)
+            qualifier = getattr(qual_obj, "value", qual_obj)
             print(f"Taxonomy : {source} -> {qualifier}")
 
     # 4. Interest Rate Payout Legs
@@ -164,7 +165,8 @@ def print_trade_summary(trade_state: TradeState) -> None:
                 continue
             for pq_idx, pq in enumerate(lot.priceQuantity, start=1):
                 if pq.quantity:
-                    for q in pq.quantity:
+                    quantities = pq.quantity if isinstance(pq.quantity, list) else [pq.quantity]
+                    for q in quantities:
                         q_val = getattr(q, "value", None)
                         curr = q.unit.currency if q.unit else ""
                         curr_val = getattr(curr, "value", curr)
@@ -178,13 +180,34 @@ def print_trade_summary(trade_state: TradeState) -> None:
     print("=" * 70)
 
 
-def main() -> None:
-    """Main execution function loading ird-ex01-vanilla-swap.json."""
-    default_json_path = Path("ird-ex01-vanilla-swap.json")
-    if not default_json_path.exists():
-        # Fallback if run from different working directory
-        default_json_path = Path(__file__).parent.parent.parent / "ird-ex01-vanilla-swap.json"
+def get_sample_irs_json_path() -> Path:
+    """Finds the appropriate sample IRS JSON file for the currently installed CDM version."""
+    import typing
+    from finos.cdm.observable.asset.PriceQuantity import PriceQuantity
 
+    ann = PriceQuantity.model_fields["quantity"].annotation
+    is_v6 = typing.get_origin(ann) is list or any(typing.get_origin(a) is list for a in typing.get_args(ann))
+    preferred_ver = "6.x.x" if is_v6 else "7.x.x"
+
+    candidates = [
+        Path(f"ird-ex01-vanilla-swap_{preferred_ver}.json"),
+        Path(f"ird-ex01-vanilla-swap_{'6.22.0' if is_v6 else '7.1.0'}.json"),
+        Path("ird-ex01-vanilla-swap.json"),
+    ]
+    for c in candidates:
+        if c.is_file():
+            return c
+        # Check relative to workspace root
+        ws_cand = _SRC_DIR.parent / c.name
+        if ws_cand.is_file():
+            return ws_cand
+
+    return Path("ird-ex01-vanilla-swap.json")
+
+
+def main() -> None:
+    """Main execution function loading appropriate sample IRS JSON."""
+    default_json_path = get_sample_irs_json_path()
     print(f"Loading and deserializing: {default_json_path.resolve()}")
     trade_state = deserialize_trade_state_from_json(default_json_path)
     print_trade_summary(trade_state)

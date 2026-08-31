@@ -36,6 +36,12 @@ def _get_str_val(field_val: object) -> str:
     return str(field_val)
 
 
+def _get_notional_schedule(trade: Trade) -> object:
+    """Helper to extract Notional quantity schedule compatible with both CDM 6.x and 7.x."""
+    pq = trade.tradeLot[0].priceQuantity[0]
+    return pq.quantity[0] if isinstance(pq.quantity, list) else pq.quantity
+
+
 def test_create_plain_irs_trade_defaults():
     """
     【テストケース: デフォルト引数を用いた標準 Plain Vanilla IRS 取引生成の検証】
@@ -82,7 +88,7 @@ def test_create_plain_irs_trade_defaults():
     assert trade.counterparty[1].role == CounterpartyRoleEnum.PARTY_2
 
     # Notional quantity
-    notional = trade.tradeLot[0].priceQuantity[0].quantity[0]
+    notional = _get_notional_schedule(trade)
     assert notional.value == Decimal("1000000000")
     assert _get_str_val(notional.unit.currency) == "JPY"
 
@@ -128,7 +134,7 @@ def test_create_plain_irs_trade_custom_parameters():
     assert _get_str_val(custom_trade.party[1].partyId[0].identifier) == "222200F9AM14CT701922"
 
     # Custom Notional and Currency
-    notional = custom_trade.tradeLot[0].priceQuantity[0].quantity[0]
+    notional = _get_notional_schedule(custom_trade)
     assert notional.value == Decimal("50000000")
     assert _get_str_val(notional.unit.currency) == "USD"
 

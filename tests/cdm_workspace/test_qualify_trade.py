@@ -10,7 +10,10 @@ import pytest
 import cdm_compat
 from finos.cdm.event.common.TradeState import TradeState
 from finos.cdm.event.common.Trade import Trade
-from cdm_workspace.deserialize_trade_state import deserialize_trade_state_from_json
+from cdm_workspace.deserialize_trade_state import (
+    deserialize_trade_state_from_json,
+    get_sample_irs_json_path,
+)
 from cdm_workspace.create_irs_trade import create_plain_irs_trade
 from cdm_workspace.qualify_trade import (
     AssetClass,
@@ -29,8 +32,8 @@ from cdm_workspace.qualify_trade import (
 
 @pytest.fixture
 def sample_vanilla_json_path() -> Path:
-    """Path to ird-ex01-vanilla-swap.json."""
-    return Path("ird-ex01-vanilla-swap.json")
+    """Path to appropriate version-specific ird-ex01-vanilla-swap sample JSON."""
+    return get_sample_irs_json_path()
 
 
 def test_qualify_vanilla_swap_from_file(sample_vanilla_json_path: Path):

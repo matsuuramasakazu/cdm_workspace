@@ -451,9 +451,12 @@ def print_qualification_summary(result: ProductQualificationResult) -> None:
 
 def main() -> None:
     """Main CLI entry point for standalone qualification execution."""
-    target_file = Path("ird-ex01-vanilla-swap.json")
+    from cdm_workspace.deserialize_trade_state import get_sample_irs_json_path
+
     if len(sys.argv) > 1:
         target_file = Path(sys.argv[1])
+    else:
+        target_file = get_sample_irs_json_path()
 
     if not target_file.exists():
         print(f"Error: Target file not found: {target_file}")

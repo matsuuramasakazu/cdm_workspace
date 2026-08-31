@@ -21,11 +21,12 @@ CDM の Python SDK (`finos-cdm`) は、Rosetta DSL（モデリング言語）か
 3. **オプショナルな Enum 型フィールドで `None` が渡された時のメタデータ初期化エラー**
 4. **Rosetta CDM 公式 JSON（`value` / `meta` / `globalKey` / `globalReference` / `externalReference` / `address`）と Rune 内部形式（`@data` / `@key` / `@ref`）のスキーマ不一致による `KeyError` およびバリデーション失敗**
 5. **複合型における `FieldWithMeta` エンベロープ（`{"value": {...fields...}, "meta": {...}}`）構造による Pydantic 型不一致**
-6. **Rosetta 生成関数実行時の未インポートシンボル（関数・Enum・モデル）による `NameError`**（例: `ConvertPeriodToNumberOfDays`, `PeriodEnum`）
-7. **Rosetta 生成コードにおける異なる Enum 型インスタンスのキャスト失敗**（例: `PeriodEnum(PeriodExtendedEnum.M)`）
-8. **Rune ネイティブ関数（`AddDays`, `DateDifference`, `LeapYearDateDifference` 等）の実装未登録による `NotImplementedError`**
-9. **`rune_all_elements` のスカラー RHS 比較バグ**（2レグスワップの商品判定で常に `False` を返す）
-10. **`finos._bundle` 外で独立定義された standalone モデル（`InterestRateIndex` 等）のスキーマ未同期**
+6. **多態 JSON（`@type: "cdm.product.asset.InterestRatePayout"`）が Choice / Union ラッパー型（`Payout` 等）に渡された際のマッピング失敗（`None` 化）**
+7. **Rosetta 生成関数実行時の未インポートシンボル（関数・Enum・モデル）による `NameError`**（例: `ConvertPeriodToNumberOfDays`, `PeriodEnum`）
+8. **Rosetta 生成コードにおける異なる Enum 型インスタンスのキャスト失敗および `None` 渡しエラー**（例: `PeriodEnum(PeriodExtendedEnum.M)`, `PeriodEnum(None)`）
+9. **Rune ネイティブ関数（`AddDays`, `DateDifference`, `LeapYearDateDifference` 等）の実装未登録による `NotImplementedError`**
+10. **`rune_all_elements` のスカラー RHS 比較バグ**（2レグスワップの商品判定で常に `False` を返す）
+11. **`finos._bundle` 外で独立定義された standalone モデル（`InterestRateIndex` 等）のスキーマ未同期**
 
 これらを完全に解消し、ユーザーが内部の形式差異や個別モデルのハードコーディングを意識することなく利用できるように設計されたパッケージが **`cdm_compat`** です。
 

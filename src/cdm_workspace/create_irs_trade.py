@@ -255,6 +255,7 @@ def create_plain_irs_trade(
     )
 
     # 10. Complete Trade Object
+    pq_obj = _build_price_quantity(quantity=notional_quantity)
     trade = Trade(
         tradeIdentifier=[trade_id],
         tradeDate=trade_date,
@@ -264,11 +265,32 @@ def create_plain_irs_trade(
             PartyRole(partyReference=party2, role=PartyRoleEnum.SELLER),
         ],
         counterparty=[counterparty1, counterparty2],
-        tradeLot=[TradeLot(priceQuantity=[PriceQuantity(quantity=[notional_quantity])])],
+        tradeLot=[TradeLot(priceQuantity=[pq_obj])],
         product=non_transferable_product,
     )
 
     return trade
+
+
+def _build_price_quantity(quantity=None, price=None, observable=None) -> PriceQuantity:
+    """Builds a PriceQuantity instance compatible with both CDM 6.x (list quantity) and 7.x (scalar quantity)."""
+    import typing
+    ann = PriceQuantity.model_fields["quantity"].annotation
+    is_list = typing.get_origin(ann) is list or any(typing.get_origin(a) is list for a in typing.get_args(ann))
+
+    if is_list:
+        q_val = [quantity] if (quantity is not None and not isinstance(quantity, list)) else quantity
+    else:
+        q_val = quantity[0] if (isinstance(quantity, list) and len(quantity) > 0) else quantity
+
+    kwargs = {}
+    if q_val is not None:
+        kwargs["quantity"] = q_val
+    if price is not None:
+        kwargs["price"] = price if isinstance(price, list) else [price]
+    if observable is not None:
+        kwargs["observable"] = observable
+    return PriceQuantity(**kwargs)
 
 
 def generate_and_save_irs_json(output_path: str | Path = "irs_trade.json") -> Path:

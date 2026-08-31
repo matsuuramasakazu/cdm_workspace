@@ -231,12 +231,21 @@ def apply_metadata_patches(config: Optional[CdmCompatConfig] = None) -> bool:
                     metadata[k] = v
 
             # Check if wrapped in Rosetta FieldWithMeta envelope: {"value": {...}, "meta": {...}}
+            # NOTE: Only unwrap if 'value' is NOT an actual field on cls (e.g. Taxonomy.value, PriceSchedule.value)
             if "value" in data and isinstance(data["value"], dict):
-                val_dict = data["value"]
-                meta_dict = data.get("meta", {})
-                data = {**val_dict}
-                if meta_dict:
-                    data["meta"] = meta_dict
+                if hasattr(cls, "model_fields") and "value" not in cls.model_fields:
+                    val_dict = data["value"]
+                    meta_dict = data.get("meta", {})
+                    data = {**val_dict}
+                    if meta_dict:
+                        data["meta"] = meta_dict
+
+            # Check if polymorphic type in data (e.g. {"@type": "...InterestRatePayout", ...})
+            # where the type matches a field on cls (e.g. Payout.InterestRatePayout)
+            if "@type" in data and hasattr(cls, "model_fields"):
+                type_name = str(data["@type"]).split(".")[-1]
+                if type_name in cls.model_fields and type_name not in data:
+                    data = {type_name: data}
 
         obj = handler(data)
         if metadata and isinstance(obj, rmeta.BaseMetaDataMixin):

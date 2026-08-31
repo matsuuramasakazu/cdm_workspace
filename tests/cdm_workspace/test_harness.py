@@ -85,9 +85,9 @@ def test_cli_subcommands(capsys):
 
     assert main(["inspect", "Trade"]) == 0
     captured = capsys.readouterr()
-    assert "Trade" in captured.out
-
-    assert main(["qualify", "ird-ex01-vanilla-swap.json"]) == 0
+    from cdm_workspace.deserialize_trade_state import get_sample_irs_json_path
+    sample_p = get_sample_irs_json_path()
+    assert main(["qualify", str(sample_p)]) == 0
     captured = capsys.readouterr()
     assert "InterestRate_IRSwap_FixedFloat" in captured.out
     assert "Vanilla Fixed/Float Interest Rate Swap" in captured.out

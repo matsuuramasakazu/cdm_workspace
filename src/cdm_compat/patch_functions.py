@@ -56,9 +56,11 @@ class _LazyRosettaSymbol:
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         target = self._resolve()
-        # If target is an Enum and first argument is another Enum instance, unwrap value
+        # If target is an Enum and first argument is provided
         if isinstance(target, type) and issubclass(target, Enum) and len(args) == 1 and not kwargs:
             arg0 = args[0]
+            if arg0 is None:
+                return None
             if isinstance(arg0, Enum):
                 return target(arg0.value)
         return target(*args, **kwargs)
