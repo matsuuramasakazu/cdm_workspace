@@ -148,16 +148,34 @@ def resolve_model_references(root_obj: Any) -> Any:
     return root_obj
 
 
-def apply_metadata_patches() -> bool:
+from typing import TYPE_CHECKING, Any, Callable, Optional, Set
+
+if TYPE_CHECKING:
+    from .config import CdmCompatConfig
+
+
+def apply_metadata_patches(config: Optional[CdmCompatConfig] = None) -> bool:
     """
     Applies patches to rune.runtime.metadata and base_data_class mixins.
     Safe to call multiple times (idempotent).
 
+    Args:
+        config: Optional configuration instance. Defaults to cdm_compat.get_config().
+
     Returns:
-        bool: True if patches were applied, False if already applied.
+        bool: True if patches were applied, False if skipped or already applied.
     """
     global _METADATA_PATCHED
     if _METADATA_PATCHED:
+        return False
+
+    if config is None:
+        from .config import get_config
+
+        config = get_config()
+
+    if not config.patch_metadata_mixins:
+        logger.debug("patch_metadata_mixins is disabled in config; skipping.")
         return False
 
     try:

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Configuration for cdm_compat runtime monkey patches and utilities",
+  "patch_rune_all_elements": true,
+  "patch_metadata_mixins": true,
+  "patch_rosetta_function_types": true,
+  "patch_func_proxy_call": true,
+  "rebuild_standalone_models": true,
+  "sync_parent_fields": false,
+  "rebuild_all_bundle_models": false
+}

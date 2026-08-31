@@ -381,3 +381,60 @@ def test_function_patches_and_qualification_function_execution():
         assert Qualify_InterestRate_IRSwap_FixedFloat(et) is True
 
 
+def test_config_loading_and_defaults():
+    """
+    【テストケース: cdm_compat 設定読み込みとデフォルト値の検証】
+    """
+    from cdm_compat.config import CdmCompatConfig, load_config, get_config
+
+    config = get_config()
+    assert isinstance(config, CdmCompatConfig)
+    assert config.patch_rune_all_elements is True
+    assert config.patch_metadata_mixins is True
+    assert config.rebuild_standalone_models is True
+    assert config.sync_parent_fields is False  # Obsoleted by PR #265
+    assert config.rebuild_all_bundle_models is False  # Obsoleted by PR #265
+
+    # Test dictionary roundtrip
+    d = config.to_dict()
+    assert "patch_rune_all_elements" in d
+    reloaded = CdmCompatConfig.from_dict(d)
+    assert reloaded == config
+
+
+def test_config_env_override(monkeypatch):
+    """
+    【テストケース: 環境変数によるパッチ設定オーバーライドの検証】
+    """
+    from cdm_compat.config import load_config
+
+    monkeypatch.setenv("CDM_COMPAT_PATCH_RUNE_ALL_ELEMENTS", "false")
+    monkeypatch.setenv("CDM_COMPAT_SYNC_PARENT_FIELDS", "true")
+
+    cfg = load_config()
+    assert cfg.patch_rune_all_elements is False
+    assert cfg.sync_parent_fields is True
+
+
+def test_standalone_model_validation():
+    """
+    【テストケース: Standalone モデル (InterestRateIndex) のバリデーション検証】
+    """
+    from finos.cdm.observable.asset.InterestRateIndex import InterestRateIndex
+
+    raw_iri = {
+        "FloatingRateIndex": {
+            "identifier": [{"identifier": {"value": "EUR-LIBOR-BBA"}, "identifierType": "Other"}],
+            "assetClass": "InterestRate",
+            "floatingRateIndex": {"value": "EUR-LIBOR-BBA"},
+            "indexTenor": {"periodMultiplier": 6, "period": "M", "meta": {"globalKey": "107"}},
+        }
+    }
+
+    iri_obj = InterestRateIndex.model_validate(raw_iri)
+    assert iri_obj.FloatingRateIndex is not None
+    assert iri_obj.FloatingRateIndex.indexTenor is not None
+    assert iri_obj.FloatingRateIndex.indexTenor.periodMultiplier == 6
+
+
+
