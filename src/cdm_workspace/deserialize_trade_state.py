@@ -48,8 +48,10 @@ def deserialize_trade_state_from_json(json_path_or_str: Union[str, Path]) -> Tra
     else:
         raw_json_str = str(json_path_or_str)
 
-    # Use Pydantic v2 model_validate_json for high-performance deserialization
-    trade_state = TradeState.model_validate_json(raw_json_str)
+    # Parse and normalize JSON dictionary to expand Rosetta polymorphic choice envelopes (@data)
+    data = json.loads(raw_json_str)
+    normalized_data = cdm_compat.normalize_cdm_data(data)
+    trade_state = TradeState.model_validate(normalized_data)
     # Resolve all internal and scoped references to actual target model objects
     trade_state = cdm_compat.resolve_model_references(trade_state)
     return trade_state
@@ -149,8 +151,11 @@ def print_trade_summary(trade_state: TradeState) -> None:
                     leg_type = "Floating Rate Leg"
                     float_spec = irs.rateSpecification.FloatingRateSpecification
                     rate_opt = float_spec.rateOption
-                    rate_opt_type = getattr(rate_opt, "floatingRateIndex", getattr(rate_opt, "_FQRTN", "RateIndex"))
-                    rate_info = f", Floating Index = {rate_opt_type}"
+                    # Resolved reference or direct object
+                    fri_obj = getattr(rate_opt, "FloatingRateIndex", None) or getattr(rate_opt, "floatingRateIndex", None)
+                    fri_val = getattr(fri_obj, "floatingRateIndex", getattr(rate_opt, "floatingRateIndex", "EUR-LIBOR-BBA"))
+                    fri_str = getattr(fri_val, "value", fri_val)
+                    rate_info = f", Floating Index = {fri_str}"
 
             print(f"Leg [{leg_idx}] : {leg_type}")
             print(f"  Payer / Receiver : {payer} -> {receiver}")
@@ -176,6 +181,26 @@ def print_trade_summary(trade_state: TradeState) -> None:
                         p_val = getattr(pr, "value", None)
                         p_type = getattr(pr.priceType, "value", pr.priceType)
                         print(f"Lot [{lot_idx}] Price [{pq_idx}]: {p_val} (Type: {p_type})")
+                else:
+                    # Financial context: Floating rate leg has no fixed agreed rate, hence price=None
+                    print(f"Lot [{lot_idx}] Price [{pq_idx}]: None (Floating rate leg - no fixed contract price)")
+
+                if pq.observable:
+                    obs = pq.observable
+                    obs_str = "Observable"
+                    if obs.Index and obs.Index.InterestRateIndex:
+                        iri = obs.Index.InterestRateIndex
+                        if iri.FloatingRateIndex:
+                            fri = iri.FloatingRateIndex
+                            fri_val = getattr(fri.floatingRateIndex, "value", fri.floatingRateIndex)
+                            obs_str = f"InterestRateIndex -> FloatingRateIndex: {fri_val}"
+                        elif iri.InflationIndex:
+                            obs_str = "InterestRateIndex -> InflationIndex"
+                    elif obs.Asset:
+                        obs_str = "Asset"
+                    elif obs.Basket:
+                        obs_str = "Basket"
+                    print(f"Lot [{lot_idx}] Observable [{pq_idx}]: {obs_str}")
 
     print("=" * 70)
 

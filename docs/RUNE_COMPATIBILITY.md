@@ -4,6 +4,7 @@
 
 > [!NOTE]
 > `finos-cdm` v7.1.0 から v6 系列への仕様差分（`PriceQuantity.quantity` のリスト型化やシリアライズ差分）の詳細については、[CDM_VERSION_DOWNGRADE_6_22.md](file:///e:/dev/python/cdm_workspace/docs/CDM_VERSION_DOWNGRADE_6_22.md) をご参照ください。
+> また、公式 CDM JSON の Choice 型（`Observable` 等）デシリアライズ不備の調査結果およびモンキーパッチ仕様は本ドキュメントの [セクション 6（パッチ 9）](#パッチ-9-rosetta-多相型-choice-エンベロープobservable-等の自動正規化-normalize_cdm_data) および [セクション 8](#8-github-上流finos--runeの調査結果と考察) をご参照ください。
 
 ---
 
@@ -27,6 +28,7 @@ CDM の Python SDK (`finos-cdm`) は、Rosetta DSL（モデリング言語）か
 9. **Rune ネイティブ関数（`AddDays`, `DateDifference`, `LeapYearDateDifference` 等）の実装未登録による `NotImplementedError`**
 10. **`rune_all_elements` のスカラー RHS 比較バグ**（2レグスワップの商品判定で常に `False` を返す）
 11. **`finos._bundle` 外で独立定義された standalone モデル（`InterestRateIndex` 等）のスキーマ未同期**
+12. **多態 Choice 型（`Observable` 等）における `@data` エンベロープ未展開による値欠落**（公式 JSON で省略された中間 Choice ラッパー階層と Pydantic v2 スキーマの不整合）
 
 これらを完全に解消し、ユーザーが内部の形式差異や個別モデルのハードコーディングを意識することなく利用できるように設計されたパッケージが **`cdm_compat`** です。
 
@@ -62,7 +64,10 @@ from finos.cdm.event.common.Trade import Trade
 from finos.cdm.event.common.TradeState import TradeState
 
 # 1. Rune 形式・Rosetta 公式 JSON 形式のいずれも自動認識・デシリアライズ可能
-trade_state = TradeState.model_validate_json(raw_json_data)
+#    （※公式 JSON のネストされた多相 Choice 型を展開するため normalize_cdm_data を併用）
+raw_dict = json.loads(raw_json_data)
+norm_dict = cdm_compat.normalize_cdm_data(raw_dict)
+trade_state = TradeState.model_validate(norm_dict)
 
 # 2. 参照ポインタの双方向解決（UnresolvedReference -> 実体オブジェクト）
 trade_state = cdm_compat.resolve_model_references(trade_state)
@@ -140,6 +145,7 @@ cdm_compat/
 | `load_config(path=None)` | `path: Optional[Path | str]` | 設定ファイルや環境変数から設定をロードして返却。 |
 | `is_patched()` | なし | パッチが既に適用されているか否か（`bool`）を返す。 |
 | `reset_patches()` | なし | パッチの適用状態をリセット（テスト用）。 |
+| `normalize_cdm_data(data)` | `data: Any` (dict/list) | 公式 CDM JSON の多相型 Choice（`Observable` 等）や `@data` エンベロープを展開・正規化。 |
 | `resolve_model_references(root_obj)` | `root_obj: BaseModel` | モデル内の `UnresolvedReference` を実体オブジェクトへ再帰的に解決・バインド。 |
 | `rebuild_standalone_models()` | なし | `finos._bundle` 外の standalone モデル（`InterestRateIndex` 等）を軽量に再構築。 |
 | `rebuild_cdm_model(cls, force=True, ...)` | `cls: Type[BaseModel]` | 任意の CDM モデルに対してスキーマ再構築を実行。 |
@@ -266,12 +272,51 @@ Rosetta 生成関数は `@replaceable`（`FuncProxy`）と `@validate_call` で�
 
 ---
 
+### パッチ 9: Rosetta 多相型 Choice エンベロープ（`Observable` 等）の自動正規化 (`normalize_cdm_data`)
+
+#### 発生する問題
+公式サンプル JSON（`ird-ex01-vanilla-swap_7.x.x.json` 等）をデシリアライズした際、`trade.tradeLot.priceQuantity[0]` の `price` および `observable` に値が入らない現象が生じます。
+
+1. **`price` の挙動（金融工学および CDM 上の正常仕様）**:
+   - `priceQuantity[0]` は金利スワップの**変動金利レグ（Floating Leg）**です。変動レグは将来の市場実勢レート（EUR-LIBOR-BBA 等）を参照するため、約定時点で確定した契約固定金利を持たず、CDM 仕様上 `price` は存在せず `None` となるのが正常です。
+   - 一方、固定金利レグである `priceQuantity[1]` には固定レート `0.06` (6.0%) が `price` に正しく格納されています。
+
+2. **`observable` の消失（コード生成とランタイムの不整合）**:
+   - 公式 JSON では変動レグの参照金利指標（`observable`）が以下のようにシリアライズされています：
+     ```json
+     "observable": {
+       "@key:scoped": "observable-1",
+       "@data": {
+         "@type": "cdm.observable.asset.InterestRateIndex",
+         "@key:scoped": "InterestRateIndex-1",
+         "@data": {
+           "@type": "cdm.observable.asset.FloatingRateIndex",
+           "floatingRateIndex": { "@data": "EUR-LIBOR-BBA" },
+           ...
+         }
+       }
+     }
+     ```
+   - Rosetta のシリアライズ仕様では、Choice 型の中間ラッパー（`Observable.Index`）を省略し、直接多相型ディスパッチ用の `@data: {"@type": "...InterestRateIndex", ...}` で出力されます。
+   - しかし、`rune-python-generator` が出力する Python クラス `Observable` は Pydantic の多相アンラップを持たないため、`@data` が無視され、`Index=None, Asset=None, Basket=None` に落ちて中身が全て欠落してしまいます。
+   - さらに、レグ側の `FloatingRateSpecification.rateOption` が scoped reference（`@ref:scoped: "InterestRateIndex-1"`）でこの `observable` を参照しているため、参照解決も失敗（Dangling）します。
+
+#### 対策 (`normalize_cdm_data`)
+`cdm_compat.normalize_cdm_data` 関数を実装し、Pydantic バリデーション前に辞書ツリーを走査して以下の多相 Choice 展開を実行します：
+1. `observable` 直下の `@data` に多相インデックス型（`InterestRateIndex`, `CreditIndex` 等）が存在する場合、`{"Index": {inner_type: ...}}` の Choice 分岐構造へ自動ラッピング。
+2. `InterestRateIndex` 直下の `@data` に `FloatingRateIndex` / `InflationIndex` が存在する場合、`{"FloatingRateIndex": ...}` の Choice 分岐構造へ自動ラッピング。
+3. 各レベルの `@key:scoped`（`InterestRateIndex-1`）を保持・正規化。
+
+この正規化により、`Observable.Index.InterestRateIndex.FloatingRateIndex` が完全に復元され、`rateOption` の参照解決も自動的に成功するようになります。
+
+---
+
 ## 7. テストと品質保証
 
-本パッケージには、設定管理、メタデータパッチ、往復 JSON シリアライズ、Standalone モデル再構築、Rosetta 関数実行、および公式 IRS サンプル JSON（`ird-ex01-vanilla-swap.json`）の商品判定を網羅した自動テストスイートが付属しています。
+本パッケージには、設定管理、メタデータパッチ、多相 Choice 正規化、往復 JSON シリアライズ、Standalone モデル再構築、Rosetta 関数実行、および公式 IRS サンプル JSON（`ird-ex01-vanilla-swap.json`）の商品判定を網羅した自動テストスイートが付属しています。
 
 ```powershell
-# 全テストスイートの実行（全33テスト）
+# 全テストスイートの実行（全34テスト）
 .venv\Scripts\python.exe -m pytest -v
 
 # AI Agent Harness による一括環境診断 & 検証
@@ -295,3 +340,4 @@ Rosetta 生成関数は `@replaceable`（`FuncProxy`）と `@validate_call` で�
 13. `test_qualify_vanilla_swap_from_file`: `ird-ex01-vanilla-swap.json` を入力したバニラ固定/変動金利スワップ判定の完全検証
 14. `test_qualify_created_irs_trade_ois`: JPY TONA OIS スワップの判定検証
 15. `test_is_vanilla_fixed_float_swap_helper`: 簡易判定ヘルパー関数の検証
+16. `test_normalize_cdm_data_choice_expansion`: Rosetta 多相型 Choice エンベロープ（`@data` + `@type`）の自動正規化と `Observable` デシリアライズ検証

@@ -76,7 +76,7 @@ def test_deserialize_trade_state_from_file(sample_json_path: Path):
     assert fixed_leg.rateSpecification.FixedRateSpecification is not None
     assert getattr(fixed_leg.dayCountFraction, "value", fixed_leg.dayCountFraction) == "30E/360"
 
-    # 5. Notional and price
+    # 5. Notional, price, and observable
     price_quantities = trade.tradeLot[0].priceQuantity
     quantities = []
     for pq in price_quantities:
@@ -84,6 +84,21 @@ def test_deserialize_trade_state_from_file(sample_json_path: Path):
             q_list = pq.quantity if isinstance(pq.quantity, list) else [pq.quantity]
             quantities.extend([Decimal(str(q.value)) for q in q_list])
     assert Decimal("50000000") in [q.normalize() if hasattr(q, "normalize") else q for q in quantities] or Decimal("50000000.0") in quantities
+
+    # Verify price behavior per leg (Floating leg has no contract rate price; Fixed leg has 6% rate price)
+    assert price_quantities[0].price is None or len(price_quantities[0].price) == 0
+    assert price_quantities[1].price is not None and len(price_quantities[1].price) > 0
+    assert price_quantities[1].price[0].value == Decimal("0.06")
+
+    # Verify observable deserialization on Floating leg priceQuantity[0]
+    float_pq = price_quantities[0]
+    assert float_pq.observable is not None
+    assert float_pq.observable.Index is not None
+    assert float_pq.observable.Index.InterestRateIndex is not None
+    assert float_pq.observable.Index.InterestRateIndex.FloatingRateIndex is not None
+    fri = float_pq.observable.Index.InterestRateIndex.FloatingRateIndex
+    fri_val = getattr(fri.floatingRateIndex, "value", fri.floatingRateIndex)
+    assert fri_val == "EUR-LIBOR-BBA"
 
     # 6. Verify Full Reference Resolution (partyReference, quantitySchedule, etc.)
     # 6.1 Counterparty partyReference resolution
@@ -106,13 +121,21 @@ def test_deserialize_trade_state_from_file(sample_json_path: Path):
     assert float_qty_sched.value == Decimal("50000000.0")
     assert getattr(float_qty_sched.unit.currency, "value", float_qty_sched.unit.currency) == "EUR"
 
-    # 6.4 Leg 2 fixed rate priceSchedule reference resolution
+    # 6.4 Leg 1 FloatingRateSpecification rateOption reference resolution to FloatingRateIndex
+    float_rate_opt = float_leg.rateSpecification.FloatingRateSpecification.rateOption
+    assert float_rate_opt is not None
+    opt_fri = getattr(float_rate_opt, "FloatingRateIndex", None) or getattr(float_rate_opt, "floatingRateIndex", None)
+    opt_fri_val = getattr(opt_fri, "floatingRateIndex", getattr(float_rate_opt, "floatingRateIndex", None))
+    opt_val_str = getattr(opt_fri_val, "value", opt_fri_val)
+    assert opt_val_str == "EUR-LIBOR-BBA"
+
+    # 6.5 Leg 2 fixed rate priceSchedule reference resolution
     fixed_price_sched = fixed_leg.rateSpecification.FixedRateSpecification.rateSchedule.price
     assert fixed_price_sched is not None
     assert isinstance(fixed_price_sched, PriceSchedule)
     assert fixed_price_sched.value == Decimal("0.06")
 
-    # 6.5 Business centers reference resolution
+    # 6.6 Business centers reference resolution
     biz_centers_ref = float_leg.calculationPeriodDates.calculationPeriodDatesAdjustments.businessCenters.businessCentersReference
     if isinstance(biz_centers_ref, BusinessCenters):
         assert len(biz_centers_ref.businessCenter) == 1
@@ -168,3 +191,5 @@ def test_print_trade_summary_execution(sample_json_path: Path, capsys):
     assert "InterestRate_IRSwap_FixedFloat" in captured.out
     assert "ACT/360" in captured.out
     assert "Party A" in captured.out
+    assert "EUR-LIBOR-BBA" in captured.out
+    assert "FloatingRateIndex" in captured.out

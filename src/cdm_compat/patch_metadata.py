@@ -70,6 +70,63 @@ def _extract_rosetta_ref(data: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def normalize_cdm_data(data: Any) -> Any:
+    """
+    Normalizes Rosetta / Rune CDM JSON dictionaries before Pydantic model validation.
+
+    Handles polymorphic choice envelopes, nested choice types, and @data envelopes
+    that are present in official FINOS CDM JSON (e.g. ird-ex01-vanilla-swap_7.x.x.json)
+    due to limitations in rune-python-generator output.
+
+    Specifically:
+    - Normalizes `observable: {"@key:scoped": "...", "@data": {"@type": "...InterestRateIndex", ...}}`
+      into `{"Index": {"InterestRateIndex": ...}, "@key:scoped": "..."}`.
+    - Normalizes `InterestRateIndex: {"@key:scoped": "...", "@data": {"@type": "...FloatingRateIndex", ...}}`
+      into `{"FloatingRateIndex": ..., "@key:scoped": "..."}`.
+    - Normalizes polymorphic Payout and RateSpecification choice dictionaries.
+    """
+    if isinstance(data, list):
+        return [normalize_cdm_data(x) for x in data]
+    if not isinstance(data, dict):
+        return data
+
+    res: dict[str, Any] = {}
+    for k, v in data.items():
+        # Case 1: Observable -> Index -> (InterestRateIndex / CreditIndex / ...)
+        if k == "observable" and isinstance(v, dict) and "@data" in v:
+            inner = v["@data"]
+            if isinstance(inner, dict):
+                inner_type = str(inner.get("@type", "")).split(".")[-1]
+                if inner_type in ("InterestRateIndex", "CreditIndex", "EquityIndex", "ForeignExchangeRateIndex", "OtherIndex"):
+                    meta = {mk: mv for mk, mv in v.items() if mk != "@data"}
+                    res[k] = {"Index": {inner_type: normalize_cdm_data(inner)}, **meta}
+                    continue
+
+        # Case 2: Index choice branches (InterestRateIndex, etc.) with @data wrapping FloatingRateIndex / InflationIndex
+        if k in ("InterestRateIndex", "CreditIndex", "EquityIndex") and isinstance(v, dict) and "@data" in v:
+            inner = v["@data"]
+            if isinstance(inner, dict):
+                inner_type = str(inner.get("@type", "")).split(".")[-1]
+                if inner_type in ("FloatingRateIndex", "InflationIndex"):
+                    meta = {mk: mv for mk, mv in v.items() if mk != "@data"}
+                    res[k] = {inner_type: normalize_cdm_data(inner), **meta}
+                    continue
+
+        # Case 3: Anonymous object where @type is InterestRateIndex and has @data with FloatingRateIndex
+        if "@type" in data and "@data" in data and isinstance(data["@data"], dict):
+            t = str(data.get("@type", "")).split(".")[-1]
+            if t == "InterestRateIndex":
+                inner = data["@data"]
+                inner_type = str(inner.get("@type", "")).split(".")[-1]
+                if inner_type in ("FloatingRateIndex", "InflationIndex"):
+                    meta = {mk: mv for mk, mv in data.items() if mk != "@data"}
+                    return {inner_type: normalize_cdm_data(inner), **meta}
+
+        res[k] = normalize_cdm_data(v)
+    return res
+
+
+
 def resolve_model_references(root_obj: Any) -> Any:
     """
     Recursively links parent pointers and resolves all UnresolvedReference instances
@@ -240,6 +297,10 @@ def apply_metadata_patches(config: Optional[CdmCompatConfig] = None) -> bool:
                     if meta_dict:
                         data["meta"] = meta_dict
 
+            # Normalize Rosetta / Rune choice envelopes if present
+            if "@data" in data and isinstance(data["@data"], dict):
+                data = normalize_cdm_data(data)
+
             # Check if polymorphic type in data (e.g. {"@type": "...InterestRatePayout", ...})
             # where the type matches a field on cls (e.g. Payout.InterestRatePayout)
             if "@type" in data and hasattr(cls, "model_fields"):
@@ -309,6 +370,10 @@ def apply_metadata_patches(config: Optional[CdmCompatConfig] = None) -> bool:
                     obj_to_use["meta"] = meta_dict
             else:
                 obj_to_use = obj
+
+            # Normalize Rosetta / Rune choice envelopes if present
+            if "@data" in obj_to_use and isinstance(obj_to_use["@data"], dict):
+                obj_to_use = normalize_cdm_data(obj_to_use)
 
             metadata: dict[str, Any] = {}
             for k, v in obj_to_use.items():

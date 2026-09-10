@@ -446,4 +446,50 @@ def test_standalone_model_validation():
     assert iri_obj.FloatingRateIndex.indexTenor.periodMultiplier == 6
 
 
+def test_normalize_cdm_data_choice_expansion():
+    """
+    【テストケース: Rosetta 多相型 Choice エンベロープ (@data + @type) の自動正規化検証】
+
+    背景・目的:
+        Rosetta 公式 JSON（ird-ex01-vanilla-swap.json 等）では、多相型 Choice において中間ラッパー
+        （Observable.Index 等）を省略し、直接 @data: {"@type": "...InterestRateIndex", ...} で
+        シリアライズされます。
+        cdm_compat.normalize_cdm_data がこれを {"Index": {"InterestRateIndex": ...}} の
+        完全な Choice 構造へと正規化し、Pydantic モデルに欠落なくマッピングされることを検証します。
+    """
+    from finos.cdm.observable.asset.Observable import Observable
+
+    raw_observable = {
+        "@data": {
+            "@data": {
+                "@type": "cdm.observable.asset.FloatingRateIndex",
+                "identifier": [{"identifier": {"@data": "EUR-LIBOR-BBA"}, "identifierType": "Other"}],
+                "assetType": "Other",
+                "floatingRateIndex": "EUR-LIBOR-BBA",
+            },
+            "@key:scoped": "InterestRateIndex-1",
+            "@type": "cdm.observable.asset.InterestRateIndex",
+        }
+    }
+
+    # 1. Test normalization logic
+    norm_dict = cdm_compat.normalize_cdm_data({"observable": raw_observable})
+    assert "observable" in norm_dict
+    obs_dict = norm_dict["observable"]
+    assert "Index" in obs_dict
+    assert "InterestRateIndex" in obs_dict["Index"]
+    assert obs_dict["Index"]["InterestRateIndex"]["@key:scoped"] == "InterestRateIndex-1"
+    assert "FloatingRateIndex" in obs_dict["Index"]["InterestRateIndex"]
+    assert obs_dict["Index"]["InterestRateIndex"]["FloatingRateIndex"]["floatingRateIndex"] == "EUR-LIBOR-BBA"
+
+    # 2. Test Observable Pydantic model validation
+    obs_model = Observable.model_validate(obs_dict)
+    assert obs_model.Index is not None
+    assert obs_model.Index.InterestRateIndex is not None
+    assert obs_model.Index.InterestRateIndex.FloatingRateIndex is not None
+    fri = obs_model.Index.InterestRateIndex.FloatingRateIndex
+    assert getattr(fri.floatingRateIndex, "value", fri.floatingRateIndex) == "EUR-LIBOR-BBA"
+
+
+
 

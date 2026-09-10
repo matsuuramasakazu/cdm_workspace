@@ -20,7 +20,7 @@ from typing import Optional
 
 from .config import CdmCompatConfig, get_config, load_config, set_config
 from .patch_functions import apply_function_patches, patch_func_proxy_call, patch_rosetta_function_types, patch_rune_all_elements
-from .patch_metadata import apply_metadata_patches, resolve_model_references
+from .patch_metadata import apply_metadata_patches, normalize_cdm_data, resolve_model_references
 from .rebuild_models import (
     rebuild_all_cdm_models,
     rebuild_cdm_model,
@@ -31,11 +31,12 @@ from .rebuild_models import (
 )
 
 __all__ = [
-    # Patching
+    # Patching & Deserialization
     "apply_patches",
     "apply_metadata_patches",
     "apply_function_patches",
     "resolve_model_references",
+    "normalize_cdm_data",
     "patch_rune_all_elements",
     "patch_rosetta_function_types",
     "patch_func_proxy_call",
